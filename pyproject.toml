@@ -1,0 +1,81 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+authors = [
+    {name = "STerliakov", email = "terlya.stas@gmail.com"},
+]
+dependencies = [
+    "pygithub>=2.5.0",
+]
+description = "Add your description here"
+name = "mypy-issues"
+readme = "README.md"
+requires-python = ">=3.13"
+version = "0.1.0"
+
+[project.scripts]
+mypy-issues = "mypy_issues:main"
+
+[tool.ruff]
+preview = true
+target-version = 'py312'
+
+[tool.ruff.analyze]
+detect-string-imports = true
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+exclude = [
+    ".svn",
+    "CVS",
+    ".bzr",
+    ".hg",
+    ".git",
+    "__pycache__",
+    ".tox",
+    ".nox",
+    ".eggs",
+    "*.egg",
+    "migrations",
+    "manage.py",
+]
+extend-ignore = [
+    "EM102",  # Exception must not use an f-string literal, assign to variable first
+    "TRY003",  # Avoid specifying long messages outside the exception class
+    "RUF012",  # Mutable class attributes should be annotated with `typing.ClassVar`
+    "DJ006",  # Do not use `exclude` with `ModelForm`, use `fields` instead
+    "DJ007",  # Do not use `__all__` with `ModelForm`, use `fields` instead
+    "RUF001",  # Russian letters in strings
+    "ANN",  # Type hints
+    "D",  # Docstrings
+    "TD",  # To-do comment lints
+    "FIX",  # Line contains TODO/FIXME/HACK, consider resolving the issue
+    "DOC",  # Docstrings
+    "CPY",  # copyright
+    "EM101",  # Exception must not use a string literal, assign to variable first
+    "PLR6301",  # Method `xxx` could be a function, class method, or static method
+    "PLC0415",  # `import` should be at the top-level of a file
+    "E501",  # Let black care about line width, if not splitable - go on
+    "T201",  # At least for now we do some printing
+    # conflicts with ruff-fmt
+    "COM812",
+]
+select = ['ALL']
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-wrap-aliases = true
+required-imports = ["from __future__ import annotations"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+split-on-trailing-comma = false
+
+[tool.uv]
+compile-bytecode = true
+dev-dependencies = [
+    "mypy>=1.14.1",
+]
+link-mode = "copy"
