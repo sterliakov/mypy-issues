@@ -44,3 +44,12 @@ repos:
         args: [--autofix, --indent, '4']
     -   id: pretty-format-toml
         args: [--autofix, --indent, '4', --trailing-comma]
+
+-   repo: local
+    hooks:
+    -   id: mypy
+        name: mypy
+        entry: ./.venv/bin/mypy src/mypy_issues/ --config-file pyproject.toml
+        pass_filenames: false
+        language: system
+        types_or: [python, toml]

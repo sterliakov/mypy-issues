@@ -7,7 +7,7 @@ authors = [
     {name = "STerliakov", email = "terlya.stas@gmail.com"},
 ]
 dependencies = [
-    "pygithub>=2.5.0",
+    "githubkit>=0.12.4",
 ]
 description = "Add your description here"
 name = "mypy-issues"
@@ -17,6 +17,33 @@ version = "0.1.0"
 
 [project.scripts]
 mypy-issues = "mypy_issues:main"
+
+[tool.mypy]
+allow_redefinition = true
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_any_unimported = false
+disallow_incomplete_defs = false
+disallow_subclassing_any = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+disallow_untyped_defs = false
+enable_error_code = [
+    "possibly-undefined",
+    'redundant-expr',
+    'truthy-bool',
+    'truthy-iterable',
+    'ignore-without-code',
+    'unused-awaitable',
+]
+ignore_missing_imports = true
+no_implicit_optional = true
+strict = true
+strict_equality = true
+warn_redundant_casts = true
+warn_return_any = false
+warn_unreachable = true
+warn_unused_ignores = true
 
 [tool.ruff]
 preview = true
@@ -44,6 +71,7 @@ exclude = [
     "manage.py",
 ]
 extend-ignore = [
+    "S101",  # Use of `assert` detected
     "EM102",  # Exception must not use an f-string literal, assign to variable first
     "TRY003",  # Avoid specifying long messages outside the exception class
     "RUF012",  # Mutable class attributes should be annotated with `typing.ClassVar`
