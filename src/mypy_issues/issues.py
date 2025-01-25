@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import argparse
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
+import threading
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial
-from pathlib import Path
+from multiprocessing.pool import ThreadPool
 from typing import Any, Final, NamedTuple
 
 from githubkit import GitHub
@@ -19,40 +17,38 @@ from githubkit.utils import UNSET
 from githubkit.versions.latest.models import GistSimplePropFiles, Issue
 from markdown_it import MarkdownIt
 
-logging.basicConfig(level=logging.INFO)
+from .config import INVENTORY_ROOT, SNIPPETS_ROOT, InventoryItem
+
 LOG = logging.getLogger("issues")
-LOG.setLevel(logging.DEBUG)
 
-OUTPUT_ROOT: Final[Path] = Path("./downloaded").resolve()
-INVENTORY_ROOT: Final[Path] = OUTPUT_ROOT / "inventory.json"
-
-RUFF = "ruff"
+RUFF: Final = "ruff"
 
 
-def main() -> None:
-    token = os.getenv("GH_ACCESS_TOKEN")
-    assert token is not None, "Please pass a PAT"
-
-    args = _parse_args()
-    if not args.no_cleanup:
-        shutil.rmtree(OUTPUT_ROOT, ignore_errors=True)
-    OUTPUT_ROOT.mkdir(exist_ok=True)
+def download_snippets(token: str, *, limit: int | None = None) -> None:
+    shutil.rmtree(SNIPPETS_ROOT, ignore_errors=True)
+    SNIPPETS_ROOT.mkdir()
 
     gh = GitHub(token)
-    inventory = []
-    with ThreadPoolExecutor() as pool:
-        for snippets in pool.map(
-            partial(extract_snippets, gh=gh),
-            list(get_issues(gh, limit=args.limit)),
+    event = threading.Event()
+    inventory: list[InventoryItem] = []
+    with ThreadPool() as pool:
+        for snippets in pool.imap(
+            partial(extract_snippets, gh_token=token, event=event),
+            _get_issues(gh, event),
         ):
             for snip in snippets:
                 if store_snippet(snip):
-                    inventory.append({  # noqa: PERF401
+                    inventory.append({
                         "filename": snip.filename,
                         "mypy_version": snip.mypy_version,
                         "created_at": int(snip.date.timestamp()),
                     })
-    LOG.info("Stored %s snippets to %s.", len(inventory), OUTPUT_ROOT)
+                    if len(inventory) == limit:
+                        event.set()
+                        break
+            if len(inventory) == limit:
+                break
+    LOG.info("Stored %s snippets to %s.", len(inventory), SNIPPETS_ROOT)
     with INVENTORY_ROOT.open("w") as fd:
         json.dump(inventory, fd, indent=4)
 
@@ -69,13 +65,10 @@ class Snippet(NamedTuple):
         return f"gh_{self.issue}_{self.id}.py"
 
 
-def get_issues(
-    gh: GitHub[Any], *, limit: int | None = None, since: datetime | None = None
-) -> Iterator[Issue]:
-    i = 0
+def _get_issues(gh: GitHub[Any], event: threading.Event) -> Iterator[Issue]:
     page = 1
     has_more = True
-    while has_more and (limit is None or i < limit):
+    while has_more and not event.is_set():
         issues = gh.rest.issues.list_for_repo(
             "python",
             "mypy",
@@ -83,19 +76,22 @@ def get_issues(
             sort="created",
             direction="desc",
             per_page=100,
-            since=since or UNSET,
             page=page,
         ).parsed_data
         # See https://github.com/yanyongyu/githubkit/pull/184
         for iss in issues:  # type: ignore[attr-defined]
             if iss.pull_request is UNSET:
                 yield iss
-                i += 1
         has_more = bool(issues)
         page += 1
 
 
-def extract_snippets(issue: Issue, gh: GitHub[Any]) -> list[Snippet]:
+def extract_snippets(
+    issue: Issue, gh_token: str, event: threading.Event
+) -> list[Snippet]:
+    if event.is_set():
+        return []
+    gh = GitHub(gh_token)
     md = MarkdownIt("gfm-like")
     i = 0
     result = []
@@ -170,19 +166,13 @@ def _normalize(snippet: str) -> str:
 
 
 def store_snippet(snip: Snippet) -> bool:
-    dest = OUTPUT_ROOT / snip.filename
+    dest = SNIPPETS_ROOT / snip.filename
     dest.write_text(snip.body)
     try:
         subprocess.check_output([RUFF, "check", dest.resolve(), "--select", "PYI001"])
     except subprocess.CalledProcessError:
-        LOG.info("Rejecting snippet %s: syntax error", dest.name)
+        LOG.debug("Rejecting snippet %s: syntax error", dest.name)
         dest.rename(dest.with_name(dest.name + ".bak"))
         return False
+    LOG.debug("Added snippet %s.", dest.name)
     return True
-
-
-def _parse_args() -> Any:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--no-cleanup", default=False, action="store_true")
-    return parser.parse_args()

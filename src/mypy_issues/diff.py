@@ -2,18 +2,16 @@ from __future__ import annotations
 
 import difflib
 import re
-from pathlib import Path
 
-RUN_OUTPUTS = Path("outputs")
-OUTPUT_ROOT = Path("./downloaded").resolve()
+from .config import LEFT_OUTPUTS, RIGHT_OUTPUTS, SNIPPETS_ROOT
 
 
-def main() -> None:
+def diff() -> None:
     def get_prefix(filename: str) -> str:
         _, iss, _ = filename.split("_", 2)
         return f"gh_{iss}"
 
-    names = {get_prefix(f.name) for f in (RUN_OUTPUTS / "left").iterdir()}
+    names = {get_prefix(f.name) for f in LEFT_OUTPUTS.iterdir()}
     print_snippets = True
     for prefix in sorted(names):
         if diffs := diff_one(prefix):
@@ -30,17 +28,17 @@ def main() -> None:
 
 
 def diff_one(prefix: str) -> list[tuple[str, str]]:
-    left_files = list((RUN_OUTPUTS / "left").glob(f"{prefix}_*"))
-    right_files = list((RUN_OUTPUTS / "right").glob(f"{prefix}_*"))
+    left_files = list(LEFT_OUTPUTS.glob(f"{prefix}_*"))
+    right_files = list(RIGHT_OUTPUTS.glob(f"{prefix}_*"))
     if not left_files or not right_files:
         return []
     outs = []
     snips = []
     for left in left_files:
-        right = RUN_OUTPUTS / "right" / left.name
+        right = RIGHT_OUTPUTS / left.name
         if not right.is_file():
             continue
-        snips.append((OUTPUT_ROOT / left.with_suffix(".py").name).read_text().strip())
+        snips.append((SNIPPETS_ROOT / left.with_suffix(".py").name).read_text().strip())
         diff_iter = difflib.unified_diff(
             _normalize(right.read_text()),
             _normalize(left.read_text()),
@@ -62,6 +60,7 @@ def _normalize(text: str) -> list[str]:
         .replace('"Never"', "Never")
         .replace("*", "")  # Old-style * for inferred types
     )
+    text = text.replace("'", '"')
     text = re.sub(r"`-?\d+", "", text)
     for typ in ["Type", "List", "Dict", "Set", "FrozenSet", "Tuple"]:
         text = re.sub(rf"\b{typ}\b", typ.lower(), text)
@@ -71,9 +70,9 @@ def _normalize(text: str) -> list[str]:
     text = re.sub(
         r'"Union\[(.+?)\]"', lambda m: '"' + _piped_union(m.group(1)) + '"', text
     )
-    text = re.sub(r"Union\[([\w ,]+?)\]", lambda m: _piped_union(m.group(1)), text)
+    text = re.sub(r"Union\[([\w .,]+?)\]", lambda m: _piped_union(m.group(1)), text)
     text = re.sub(
-        r'Skipping analyzing "(.+)": found module but no type hints or library stubs',
+        r'Skipping analyzing "(.+?)": found module but no type hints or library stubs',
         r'Cannot find implementation or library stub for module named "\1"',
         text,
     )
@@ -85,12 +84,12 @@ def _normalize(text: str) -> list[str]:
     text = _rewrite_literals(text)
     lines = [
         _remove_code(line)
-        for line in sorted(text.splitlines())
+        for line in text.strip().splitlines()
         if not _is_extra_note(line)
     ]
     if lines and lines[-1].startswith(("Success: ", "Found ")):
         lines = lines[:-1]
-    return lines
+    return sorted(lines)
 
 
 def _is_extra_note(line: str) -> bool:

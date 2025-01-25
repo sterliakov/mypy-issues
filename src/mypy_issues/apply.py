@@ -6,49 +6,67 @@ import os
 import shutil
 import subprocess
 from bisect import bisect_left
-from collections.abc import Iterable, Iterator
-from concurrent.futures import ProcessPoolExecutor
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from itertools import groupby
-from operator import itemgetter
+from multiprocessing import Pool
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Final
+from typing import Final
 
-logging.basicConfig(level=logging.INFO)
+from tqdm import trange
+
+from mypy_issues.config import (
+    INVENTORY_ROOT,
+    LEFT_OUTPUTS,
+    RIGHT_OUTPUTS,
+    SNIPPETS_ROOT,
+    InventoryItem,
+)
+
 LOG = logging.getLogger("apply")
 LOG.setLevel(logging.DEBUG)
 
-LEFT = Path("left_mypy")
-RIGHT = Path("right_mypy")
+LEFT: Final = Path("left_mypy")
+RIGHT: Final = Path("right_mypy")
 
-RUN_OUTPUTS = Path("outputs")
+GIT: Final = "git"
+UV: Final = "uv"
 
-OUTPUT_ROOT: Final[Path] = Path("./downloaded").resolve()
-INVENTORY_ROOT: Final[Path] = OUTPUT_ROOT / "inventory.json"
-
-GIT = "git"
-UV = "uv"
+MYPY_CONFIG: Final = """
+[mypy]
+strict = True
+warn_unreachable = True
+warn_unused_ignores = True
+"""
 
 
 class UnknownVersionError(RuntimeError):
     pass
 
 
-def main() -> None:
+class IncompatiblePythonError(RuntimeError):
+    pass
+
+
+def run_apply() -> None:
     with INVENTORY_ROOT.open() as fd:
         inventory = json.load(fd)
     inventory = list(add_versions(inventory))
 
-    shutil.rmtree(RUN_OUTPUTS, ignore_errors=True)
-    RUN_OUTPUTS.mkdir()
+    # Prevent interference from parent pyproject.toml
+    (SNIPPETS_ROOT / "mypy.ini").write_text(MYPY_CONFIG)
 
+    LOG.info("Running left (current) mypy...")
     run_left(inventory)
+    LOG.info("Running left (current) mypy done.")
+    LOG.info("Running right (referenced) mypy...")
     run_right(inventory)
+    LOG.info("Running right (referenced) mypy done.")
 
 
-def add_versions(inventory: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+def add_versions(inventory: list[InventoryItem]) -> Iterator[InventoryItem]:
     releases = _get_releases()
     dates = sorted(releases)
     for file in inventory:
@@ -83,35 +101,49 @@ def _get_releases() -> dict[datetime, str]:
     return date_to_tag
 
 
-def run_left(inventory: list[dict[str, Any]]) -> None:
-    left_dest = RUN_OUTPUTS / "left"
-    left_dest.mkdir()
-    _setup_copy_from_source(LEFT, "master", use_mypyc=True)
-    run_on_files(LEFT, [OUTPUT_ROOT / f["filename"] for f in inventory], left_dest)
+def run_left(inventory: list[InventoryItem]) -> None:
+    shutil.rmtree(LEFT_OUTPUTS)
+    LEFT_OUTPUTS.mkdir()
+    mypy = _setup_copy_from_source(LEFT, "master")
+    run_on_files(mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS)
 
 
-def run_right(inventory: list[dict[str, str]]) -> None:
-    right_dest = RUN_OUTPUTS / "right"
-    right_dest.mkdir()
-    get_ver = itemgetter("mypy_version")
+def run_right(inventory: list[InventoryItem]) -> None:
+    shutil.rmtree(RIGHT_OUTPUTS)
+    RIGHT_OUTPUTS.mkdir()
+
+    def get_ver(item: InventoryItem) -> str:
+        ver = item["mypy_version"]
+        if not ver:
+            return ""  # Should be comparable
+        ver = ver.removesuffix("v")
+        match ver.split("."):
+            case ["1", _]:
+                return f"{ver}.0"
+            case _:
+                return ver
+
     for ver, files_ in groupby(sorted(inventory, key=get_ver), key=get_ver):
+        if not ver:
+            continue
         files = list(files_)
         try:
-            _setup_copy_from_pypi(RIGHT, ver)
+            mypy = _setup_copy_from_pypi(RIGHT, ver)
         except UnknownVersionError:
             LOG.warning("Failed to switch to version %s", ver)
             continue
-        run_on_files(RIGHT, [OUTPUT_ROOT / f["filename"] for f in files], right_dest)
-
-
-def run_on_files(mypy: Path, files: Iterable[Path], dest_root: Path) -> None:
-    with ProcessPoolExecutor() as pool, TemporaryDirectory() as tmp:
-        list(
-            pool.map(
-                partial(run_on_file, mypy=mypy, dest_root=dest_root, temp_dir=tmp),
-                files,
-            )
+        run_on_files(
+            mypy, [SNIPPETS_ROOT / f["filename"] for f in files], RIGHT_OUTPUTS
         )
+
+
+def run_on_files(mypy: Path, files: Sequence[Path], dest_root: Path) -> None:
+    with Pool() as pool, TemporaryDirectory() as tmp:
+        task_iter = pool.imap_unordered(
+            partial(run_on_file, mypy=mypy, dest_root=dest_root, temp_dir=tmp),
+            files,
+        )
+        list(zip(trange(len(files)), task_iter, strict=True))
 
 
 def run_on_file(target: Path, mypy: Path, dest_root: Path, temp_dir: str) -> None:
@@ -124,9 +156,8 @@ def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> str:
         # fmt: off
         res = subprocess.run(
             [
-                "./.venv/bin/mypy",
+                str(mypy.resolve()),
                 str(target.resolve()),
-                "--strict",
                 "--cache-dir", f"{temp_dir}/{os.getpid()}",
                 "--show-traceback",
             ],
@@ -134,7 +165,7 @@ def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> str:
             text=True,
             timeout=30,
             check=False,
-            cwd=mypy,
+            cwd=SNIPPETS_ROOT,
         )
         # fmt: on
     except subprocess.TimeoutExpired:
@@ -149,54 +180,77 @@ def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> str:
         return text
 
 
-def _setup_copy_from_source(
-    dest: Path, rev: str = "master", *, use_mypyc: bool = False
-) -> None:
-    LOG.info("Switching to mypy version %s", rev)
+def _setup_copy_from_source(dest: Path, rev: str = "master") -> Path:
+    LOG.debug("Switching to mypy version %s", rev)
     wd = dest.resolve()
     if not dest.is_dir():
-        subprocess.check_output([
-            GIT,
-            "clone",
-            "https://github.com/python/mypy",
-            str(wd),
-        ])
-        subprocess.check_output([UV, "venv"], cwd=wd)
+        subprocess.check_output(
+            [
+                GIT,
+                "clone",
+                "https://github.com/python/mypy",
+                str(wd),
+            ],
+            stderr=subprocess.STDOUT,
+        )
+        _call_uv(["venv"], wd)
     else:
-        subprocess.check_output([GIT, "fetch", "--all"], cwd=wd)
+        subprocess.check_output(
+            [GIT, "fetch", "--all"], cwd=wd, stderr=subprocess.STDOUT
+        )
 
     try:
-        subprocess.check_output([GIT, "checkout", rev], cwd=wd)
+        subprocess.check_output(
+            [GIT, "checkout", rev], cwd=wd, stderr=subprocess.STDOUT
+        )
     except subprocess.CalledProcessError as exc:
         raise UnknownVersionError(f"Unknown version: {rev}") from exc
 
-    uv_env = {"PATH": os.environ["PATH"]}
-    if use_mypyc:
-        uv_env["MYPY_USE_MYPYC"] = "1"
-        uv_env["MYPYC_OPT_LEVEL"] = "3"
-    subprocess.check_output(
-        [UV, "pip", "install", "-e", ".", "--reinstall"], cwd=wd, env=uv_env
-    )
+    LOG.debug("Installing mypy %s from source...", rev)
+    _call_uv(["pip", "install", "-e", ".", "--reinstall"], wd)
+    return dest / ".venv/bin/mypy"
 
 
-def _setup_copy_from_pypi(dest: Path, rev: str) -> None:
-    wd = dest.resolve()
-    if not (dest / ".venv").is_dir():
-        subprocess.check_output([UV, "venv"], cwd=wd)
-    dest.mkdir(exist_ok=True)
-    rev = rev.removeprefix("v")
-
-    for maybe_rev in [rev, rev.removesuffix(".0"), f"{rev}.0"]:
+def _setup_copy_from_pypi(dest: Path, rev: str) -> Path:
+    for minor in [13, 10]:  # intermediate versions never help; below 8 is too old
         try:
-            subprocess.check_output(
-                [UV, "pip", "install", f"mypy=={maybe_rev}"],
-                cwd=wd,
-                stderr=subprocess.STDOUT,
-                env={"PATH": os.environ["PATH"]},
-            )
-        except subprocess.CalledProcessError:
+            path = _setup_copy_from_pypi_with_python(dest, rev, f"3.{minor}")
+        except IncompatiblePythonError:
+            LOG.info("Python 3.%d too new for mypy %s.", minor, rev)
             continue
         else:
-            break
+            LOG.info("Using mypy %s with python 3.%d", rev, minor)
+            return path
+    raise UnknownVersionError(f"Failed to find a suitable python for mypy {rev}")
+
+
+def _setup_copy_from_pypi_with_python(dest: Path, rev: str, python: str) -> Path:
+    dest.mkdir(exist_ok=True)
+    wd = dest.resolve()
+    venv = f".venv{python}"
+    if not (dest / venv).is_dir():
+        _call_uv(["venv", venv, "--python", python], wd)
+    rev = rev.removeprefix("v")
+
+    try:
+        _call_uv(
+            ["pip", "install", f"mypy=={rev}", "--python", f"{venv}/bin/python"], wd
+        )
+    except subprocess.CalledProcessError as exc:
+        if "typed-ast" in (exc.stderr or "") + (exc.stdout or ""):
+            raise IncompatiblePythonError(
+                f"Python {python} is too new for mypy {rev}"
+            ) from exc
+        raise UnknownVersionError(f"Unknown version: {rev}") from exc
     else:
-        raise UnknownVersionError(f"Unknown version: {rev}")
+        return dest / venv / "bin/mypy"
+
+
+def _call_uv(cmd: list[str], cwd: Path) -> str:
+    return subprocess.check_output(
+        [UV, *cmd],
+        cwd=cwd,
+        stderr=subprocess.STDOUT,
+        env={"PATH": os.environ["PATH"]},
+        text=True,
+    )

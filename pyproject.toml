@@ -2,6 +2,12 @@
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+    "types-tqdm>=4.67.0.20241221",
+]
+
 [project]
 authors = [
     {name = "STerliakov", email = "terlya.stas@gmail.com"},
@@ -10,17 +16,18 @@ dependencies = [
     "githubkit>=0.12.4",
     "markdown-it-py[linkify]>=3.0.0",
     "ruff>=0.9.3",
+    "tqdm>=4.67.1",
 ]
 description = "Add your description here"
 name = "mypy-issues"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.9"
 version = "0.1.0"
 
 [project.scripts]
-diff = "mypy_issues.diff:main"
-fetch = "mypy_issues.issues:main"
-run = "mypy_issues.apply:main"
+diff = "mypy_issues:run_diff"
+fetch = "mypy_issues:fetch_issues"
+run = "mypy_issues:run_mypy"
 
 [tool.mypy]
 allow_redefinition = true
@@ -40,7 +47,6 @@ enable_error_code = [
     'ignore-without-code',
     'unused-awaitable',
 ]
-ignore_missing_imports = true
 no_implicit_optional = true
 strict = true
 strict_equality = true
@@ -110,7 +116,4 @@ split-on-trailing-comma = false
 
 [tool.uv]
 compile-bytecode = true
-dev-dependencies = [
-    "mypy>=1.14.1",
-]
 link-mode = "copy"
