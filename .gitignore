@@ -11,3 +11,6 @@ wheels/
 
 # Custom
 /downloaded
+/left_mypy
+/right_mypy
+/outputs

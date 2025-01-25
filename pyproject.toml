@@ -9,6 +9,7 @@ authors = [
 dependencies = [
     "githubkit>=0.12.4",
     "markdown-it-py[linkify]>=3.0.0",
+    "ruff>=0.9.3",
 ]
 description = "Add your description here"
 name = "mypy-issues"
@@ -17,7 +18,9 @@ requires-python = ">=3.13"
 version = "0.1.0"
 
 [project.scripts]
-mypy-issues = "mypy_issues.issues:main"
+diff = "mypy_issues.diff:main"
+fetch = "mypy_issues.issues:main"
+run = "mypy_issues.apply:main"
 
 [tool.mypy]
 allow_redefinition = true
@@ -88,6 +91,9 @@ extend-ignore = [
     "E501",  # Let ruff care about line width, if not splitable - go on
     # conflicts with ruff-fmt
     "COM812",
+    # custom
+    "S404",  # `subprocess` module is possibly insecure
+    "S603",  # `subprocess` call: check for execution of untrusted input
 ]
 extend-safe-fixes = ["F401"]
 select = ['ALL']
@@ -98,6 +104,9 @@ force-wrap-aliases = true
 required-imports = ["from __future__ import annotations"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 split-on-trailing-comma = false
+
+[tool.ruff.lint.per-file-ignores]
+"diff.py" = ["T201"]
 
 [tool.uv]
 compile-bytecode = true
