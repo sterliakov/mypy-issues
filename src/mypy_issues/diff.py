@@ -3,28 +3,37 @@ from __future__ import annotations
 import difflib
 import re
 
+from pygments import highlight
+from pygments.formatters import TerminalTrueColorFormatter
+from pygments.lexers import PythonLexer
+
 from .config import LEFT_OUTPUTS, RIGHT_OUTPUTS, SNIPPETS_ROOT
 
 
-def diff() -> None:
-    def get_prefix(filename: str) -> str:
+def diff(*, print_snippets=True) -> None:
+    def get_issue_no(filename: str) -> int:
         _, iss, _ = filename.split("_", 2)
-        return f"gh_{iss}"
+        return int(iss)
 
-    names = {get_prefix(f.name) for f in LEFT_OUTPUTS.iterdir()}
-    print_snippets = True
-    for prefix in sorted(names):
-        if diffs := diff_one(prefix):
-            issue_id = prefix.removeprefix("gh_")
-            print()
-            print("=" * 40)
+    names = {get_issue_no(f.name) for f in LEFT_OUTPUTS.iterdir()}
+    for issue_no in sorted(names, reverse=True):
+        if diffs := diff_one(f"gh_{issue_no}"):
+            print("=" * 80)
             print(
-                f"Issue #{issue_id}: https://github.com/python/mypy/issues/{issue_id}"
+                f"Issue #{issue_no}: https://github.com/python/mypy/issues/{issue_no}"
             )
             for d, snip in diffs:
                 if print_snippets:
-                    print(snip)
+                    print(
+                        highlight(
+                            snip,
+                            PythonLexer(),
+                            TerminalTrueColorFormatter(linenos=True, bg="dark"),
+                        )
+                    )
+                    print("-" * 80)
                 print(d)
+                print()
 
 
 def diff_one(prefix: str) -> list[tuple[str, str]]:
@@ -59,12 +68,19 @@ def _normalize(text: str) -> list[str]:
         .replace("NoReturn", "Never")
         .replace('"Never"', "Never")
         .replace("*", "")  # Old-style * for inferred types
+        .replace(
+            "Function is missing a return type annotation",
+            "Function is missing a type annotation",
+        )
     )
     text = text.replace("'", '"')
     text = re.sub(r"`-?\d+", "", text)
+    text = re.sub(r"(.)gh_\d+_\d+\.", r"\1", text)
     for typ in ["Type", "List", "Dict", "Set", "FrozenSet", "Tuple"]:
         text = re.sub(rf"\b{typ}\b", typ.lower(), text)
     text = text.replace("tuple[,", "tuple[(),")
+    text = text.replace('"type"', '"builtins.type"')
+    text = re.sub(r"\bellipsis\b", "EllipsisType", text)
     text = re.sub(r"Optional\[(\w+?)\]", r"\1 | None", text)
     text = re.sub(r'"Optional\[(.+?)\]"', r'"\1 | None"', text)
     text = re.sub(
@@ -73,6 +89,11 @@ def _normalize(text: str) -> list[str]:
     text = re.sub(r"Union\[([\w .,]+?)\]", lambda m: _piped_union(m.group(1)), text)
     text = re.sub(
         r'Skipping analyzing "(.+?)": found module but no type hints or library stubs',
+        r'Cannot find implementation or library stub for module named "\1"',
+        text,
+    )
+    text = re.sub(
+        r'Skipping analyzing "(.+)": module is installed, but missing library stubs or py\.typed marker',
         r'Cannot find implementation or library stub for module named "\1"',
         text,
     )
@@ -89,12 +110,22 @@ def _normalize(text: str) -> list[str]:
     ]
     if lines and lines[-1].startswith(("Success: ", "Found ")):
         lines = lines[:-1]
-    return sorted(lines)
+
+    def lineno(s: str) -> int:
+        try:
+            _, n, _ = s.split(":", 2)
+            return int(n)
+        except ValueError:
+            return -1
+
+    return sorted(lines, key=lambda line: (lineno(line), line))
 
 
 def _is_extra_note(line: str) -> bool:
-    return "Missing return statement" in line or (
-        "note:" in line and "note: Revealed type" not in line
+    return (
+        "Missing return statement" in line
+        or ("note:" in line and "note: Revealed type" not in line)
+        or "syntax error in type comment" in line
     )
 
 

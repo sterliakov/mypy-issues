@@ -5,6 +5,7 @@ requires = ["hatchling"]
 [dependency-groups]
 dev = [
     "mypy>=1.14.1",
+    "types-pygments>=2.19.0.20250107",
     "types-tqdm>=4.67.0.20241221",
 ]
 
@@ -15,13 +16,14 @@ authors = [
 dependencies = [
     "githubkit>=0.12.4",
     "markdown-it-py[linkify]>=3.0.0",
+    "pygments>=2.19.1",
     "ruff>=0.9.3",
     "tqdm>=4.67.1",
 ]
 description = "Add your description here"
 name = "mypy-issues"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 version = "0.1.0"
 
 [project.scripts]

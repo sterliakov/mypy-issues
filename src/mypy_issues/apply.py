@@ -36,7 +36,6 @@ UV: Final = "uv"
 
 MYPY_CONFIG: Final = """
 [mypy]
-strict = True
 warn_unreachable = True
 warn_unused_ignores = True
 """
@@ -160,6 +159,7 @@ def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> str:
                 str(target.resolve()),
                 "--cache-dir", f"{temp_dir}/{os.getpid()}",
                 "--show-traceback",
+                "--strict",
             ],
             capture_output=True,
             text=True,
