@@ -184,9 +184,13 @@ def diff_one(prefix: str) -> list[tuple[str, str]]:
         right = RIGHT_OUTPUTS / left.name
         if not right.is_file():
             continue
+        right_out = right.read_text()
+        if "syntax error in type comment" in right_out:
+            # mypy too old, something went wrong
+            continue
         snips.append((SNIPPETS_ROOT / left.with_suffix(".py").name).read_text().strip())
         diff_iter = difflib.unified_diff(
-            _normalize(right.read_text()),
+            _normalize(right_out),
             _normalize(left.read_text()),
             lineterm="",
         )
@@ -215,7 +219,7 @@ def _normalize(text: str) -> list[str]:
     for typ in ["Type", "List", "Dict", "Set", "FrozenSet", "Tuple"]:
         text = re.sub(rf"\b{typ}\b", typ.lower(), text)
     text = text.replace("tuple[,", "tuple[(),")
-    text = text.replace('"type"', '"builtins.type"')
+    text = text.replace("builtins.", "")
     text = re.sub(r"\bellipsis\b", "EllipsisType", text)
     text = re.sub(r"Optional\[(\w+?)\]", r"\1 | None", text)
     text = re.sub(r'"Optional\[(.+?)\]"', r'"\1 | None"', text)
@@ -244,7 +248,8 @@ def _normalize(text: str) -> list[str]:
         text,
     )
     text = _rewrite_literals(text)
-    text = text.replace('*"', '"')  # Old-style inferred type asterisks
+    text = re.sub(r"\*(?!\w)", "", text)  # Old-style inferred type asterisks
+    text = re.sub(r"\bunused\b", "Unused", text)
     lines = [
         _remove_code(line)
         for line in text.strip().splitlines()

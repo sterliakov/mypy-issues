@@ -33,6 +33,8 @@ RIGHT: Final = Path("right_mypy")
 GIT: Final = "git"
 UV: Final = "uv"
 
+MIN_SUPPORTED_MYPY = (0, 800)
+
 MYPY_CONFIG: Final = """
 [mypy]
 warn_unreachable = True
@@ -48,7 +50,7 @@ class IncompatiblePythonError(RuntimeError):
     pass
 
 
-def run_apply() -> None:
+def run_apply(*, left: bool = True, right: bool = True) -> None:
     with INVENTORY_FILE.open() as fd:
         inventory = json.load(fd)
     inventory = list(add_versions(inventory))
@@ -56,27 +58,32 @@ def run_apply() -> None:
     # Prevent interference from parent pyproject.toml
     (SNIPPETS_ROOT / "mypy.ini").write_text(MYPY_CONFIG)
 
-    LOG.info("Running left (current) mypy...")
-    run_left(inventory)
-    LOG.info("Running left (current) mypy done.")
-    LOG.info("Running right (referenced) mypy...")
-    run_right(inventory)
-    LOG.info("Running right (referenced) mypy done.")
+    if left:
+        LOG.info("Running left (current) mypy...")
+        run_left(inventory)
+        LOG.info("Running left (current) mypy done.")
+    if right:
+        LOG.info("Running right (referenced) mypy...")
+        run_right(inventory)
+        LOG.info("Running right (referenced) mypy done.")
 
 
 def add_versions(inventory: list[InventoryItem]) -> Iterator[InventoryItem]:
     releases = _get_releases()
     dates = sorted(releases)
     for file in inventory:
-        if file["mypy_version"] not in {None, "master"}:
-            yield file
+        ver = file["mypy_version"]
+        if ver in {None, "master"}:
+            latest_release_index = bisect_left(
+                dates, datetime.fromtimestamp(file["created_at"], tz=UTC)
+            )
+            if latest_release_index == len(dates):
+                continue
+            ver = releases[dates[latest_release_index]]
+        parsed = _parse_semver(ver)
+        if parsed is None or parsed < MIN_SUPPORTED_MYPY:
             continue
-        latest_release_index = bisect_left(
-            dates, datetime.fromtimestamp(file["created_at"], tz=UTC)
-        )
-        if latest_release_index == len(dates):
-            continue
-        yield file | {"mypy_version": releases[dates[latest_release_index]]}
+        yield file | {"mypy_version": ver}
 
 
 def _get_releases() -> dict[datetime, str]:
@@ -110,23 +117,17 @@ def run_right(inventory: list[InventoryItem]) -> None:
     shutil.rmtree(RIGHT_OUTPUTS)
     RIGHT_OUTPUTS.mkdir()
 
-    def get_ver(item: InventoryItem) -> str:
+    def get_ver(item: InventoryItem) -> tuple[int, int] | tuple[int, int, int]:
         ver = item["mypy_version"]
-        if not ver:
-            return ""  # Should be comparable
-        ver = ver.removeprefix("v")
-        match ver.split("."):
-            case ["1", _]:
-                return f"{ver}.0"
-            case _:
-                return ver
+        assert ver
+        parsed = _parse_semver(ver)
+        assert parsed, ver
+        return parsed
 
     for ver, files_ in groupby(sorted(inventory, key=get_ver), key=get_ver):
-        if not ver:
-            continue
         files = list(files_)
         try:
-            mypy = _setup_copy_from_pypi(RIGHT, ver)
+            mypy = _setup_copy_from_pypi(RIGHT, ".".join(map(str, ver)))
         except UnknownVersionError:
             LOG.warning("Failed to switch to version %s", ver)
             continue
@@ -253,3 +254,15 @@ def _call_uv(cmd: list[str], cwd: Path) -> str:
         env={"PATH": os.environ["PATH"]},
         text=True,
     )
+
+
+def _parse_semver(ver: str | None) -> tuple[int, int] | tuple[int, int, int] | None:
+    match (ver or "").removeprefix("v").split("."):
+        case ["0", minor]:
+            return (0, int(minor))
+        case ["1", minor]:
+            return (1, int(minor), 0)
+        case ["1", minor, patch]:
+            return (1, int(minor), int(patch))
+        case _:
+            return None
