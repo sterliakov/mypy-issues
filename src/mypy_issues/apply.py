@@ -18,7 +18,7 @@ from typing import Final
 from tqdm import trange
 
 from mypy_issues.config import (
-    INVENTORY_ROOT,
+    INVENTORY_FILE,
     LEFT_OUTPUTS,
     RIGHT_OUTPUTS,
     SNIPPETS_ROOT,
@@ -26,7 +26,6 @@ from mypy_issues.config import (
 )
 
 LOG = logging.getLogger("apply")
-LOG.setLevel(logging.DEBUG)
 
 LEFT: Final = Path("left_mypy")
 RIGHT: Final = Path("right_mypy")
@@ -50,7 +49,7 @@ class IncompatiblePythonError(RuntimeError):
 
 
 def run_apply() -> None:
-    with INVENTORY_ROOT.open() as fd:
+    with INVENTORY_FILE.open() as fd:
         inventory = json.load(fd)
     inventory = list(add_versions(inventory))
 
@@ -207,7 +206,7 @@ def _setup_copy_from_source(dest: Path, rev: str = "master") -> Path:
         raise UnknownVersionError(f"Unknown version: {rev}") from exc
 
     LOG.debug("Installing mypy %s from source...", rev)
-    _call_uv(["pip", "install", "-e", ".", "--reinstall"], wd)
+    _call_uv(["pip", "install", ".", "--reinstall"], wd)
     return dest / ".venv/bin/mypy"
 
 

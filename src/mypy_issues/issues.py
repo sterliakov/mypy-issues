@@ -17,7 +17,7 @@ from githubkit.utils import UNSET
 from githubkit.versions.latest.models import GistSimplePropFiles, Issue
 from markdown_it import MarkdownIt
 
-from .config import INVENTORY_ROOT, SNIPPETS_ROOT, InventoryItem
+from .config import INVENTORY_FILE, ISSUES_FILE, SNIPPETS_ROOT, InventoryItem
 
 LOG = logging.getLogger("issues")
 
@@ -31,12 +31,13 @@ def download_snippets(token: str, *, limit: int | None = None) -> None:
     gh = GitHub(token)
     event = threading.Event()
     inventory: list[InventoryItem] = []
+    issues: dict[int, Issue] = {}
     with ThreadPool() as pool:
         for snippets in pool.imap(
             partial(extract_snippets, gh_token=token, event=event),
             _get_issues(gh, event),
         ):
-            for snip in snippets:
+            for snip, issue in snippets:
                 if store_snippet(snip):
                     inventory.append({
                         "filename": snip.filename,
@@ -46,11 +47,21 @@ def download_snippets(token: str, *, limit: int | None = None) -> None:
                     if len(inventory) == limit:
                         event.set()
                         break
+                issues[issue.number] = issue
             if len(inventory) == limit:
                 break
     LOG.info("Stored %s snippets to %s.", len(inventory), SNIPPETS_ROOT)
-    with INVENTORY_ROOT.open("w") as fd:
+    with INVENTORY_FILE.open("w") as fd:
         json.dump(inventory, fd, indent=4)
+    with ISSUES_FILE.open("w") as fd:
+        json.dump(
+            {
+                n: iss.model_dump(mode="json", exclude_unset=True)
+                for n, iss in issues.items()
+            },
+            fd,
+            indent=4,
+        )
 
 
 class Snippet(NamedTuple):
@@ -88,7 +99,7 @@ def _get_issues(gh: GitHub[Any], event: threading.Event) -> Iterator[Issue]:
 
 def extract_snippets(
     issue: Issue, gh_token: str, event: threading.Event
-) -> list[Snippet]:
+) -> list[tuple[Snippet, Issue]]:
     if event.is_set():
         return []
     gh = GitHub(gh_token)
@@ -142,7 +153,7 @@ def extract_snippets(
                 )
             )
             i += 1
-    return result
+    return [(b, issue) for b in result]
 
 
 def _extract_mypy_version(body: str) -> str | None:

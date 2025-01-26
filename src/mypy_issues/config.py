@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Final, TypedDict
 
 SNIPPETS_ROOT: Final = Path("./downloaded").resolve()
-INVENTORY_ROOT: Final = SNIPPETS_ROOT / "inventory.json"
+INVENTORY_FILE: Final = SNIPPETS_ROOT / "inventory.json"
+ISSUES_FILE: Final = SNIPPETS_ROOT / "issues.json"
 
 RUN_OUTPUTS_ROOT: Final = Path("./outputs")
 LEFT_OUTPUTS: Final = RUN_OUTPUTS_ROOT / "left"
