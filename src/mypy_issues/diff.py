@@ -88,7 +88,7 @@ class InteractivePrinter(NonInteractivePrinter):
         "w": RUN_OUTPUTS_ROOT / "worse.txt",
         "s": RUN_OUTPUTS_ROOT / "same.txt",
         "i": RUN_OUTPUTS_ROOT / "invalid.txt",
-        "?": RUN_OUTPUTS_ROOT / "unsure.txt",
+        "n": RUN_OUTPUTS_ROOT / "notes.txt",
     }
 
     def cleanup(self) -> None:
@@ -103,19 +103,21 @@ class InteractivePrinter(NonInteractivePrinter):
             ch = self.getchar().lower()
             if ch == "c":
                 self.print_context(issue_number)
-            elif ch in "fbwsi?":
-                self._handle_state_input(ch, issue_number)
+            elif ch == "n":
+                message = input("\nEnter your comment: ")
+                with self.files[ch].open("a") as fd:
+                    fd.write(f"{issue_number}: {message}\n")
                 break
-
-    def _handle_state_input(self, ch: str, issue_number: int) -> None:
-        with self.files[ch].open("a") as fd:
-            fd.write(f"{issue_number}\n")
+            elif ch in "fbwsi":
+                with self.files[ch].open("a") as fd:
+                    fd.write(f"{issue_number}\n")
+                break
 
     def _print_prompt(self) -> None:
         print(
-            "f=fixed | b=better | w=worse | s=same | i=invalid | ?=unsure | c=context: "
+            "f=fixed | b=better | w=worse | s=same | i=invalid | n=note | c=context: "
         )
-        print("How's this? [fbwsi?c] ")
+        print("How's this? [fbwsinc] ")
 
     def print_context(self, issue_number: int) -> None:
         print("~" * self.sep_width)

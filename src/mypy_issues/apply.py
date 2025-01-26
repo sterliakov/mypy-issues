@@ -94,7 +94,7 @@ def _get_releases() -> dict[datetime, str]:
             first_part, *_ = line.split(",")
             timestamp, _, tag = first_part.split()
             date_to_tag[datetime.fromtimestamp(int(timestamp), tz=UTC)] = (
-                tag.removesuffix("v")
+                tag.removeprefix("v")
             )
     return date_to_tag
 
@@ -114,7 +114,7 @@ def run_right(inventory: list[InventoryItem]) -> None:
         ver = item["mypy_version"]
         if not ver:
             return ""  # Should be comparable
-        ver = ver.removesuffix("v")
+        ver = ver.removeprefix("v")
         match ver.split("."):
             case ["1", _]:
                 return f"{ver}.0"
