@@ -13,7 +13,7 @@ from itertools import groupby
 from multiprocessing import Pool
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Final
+from typing import Final, Literal, TypeAlias
 
 from tqdm import trange
 
@@ -26,6 +26,8 @@ from mypy_issues.config import (
 )
 
 LOG = logging.getLogger("apply")
+
+OldStrategy: TypeAlias = Literal["skip", "cap"]
 
 LEFT: Final = Path("left_mypy")
 RIGHT: Final = Path("right_mypy")
@@ -50,25 +52,37 @@ class IncompatiblePythonError(RuntimeError):
     pass
 
 
-def run_apply(*, left: bool = True, right: bool = True) -> None:
+def run_apply(
+    *,
+    left: bool = True,
+    right: bool = True,
+    left_rev: str = "master",
+    right_rev: str | None = None,
+    old_strategy: OldStrategy = "skip",
+) -> None:
     with INVENTORY_FILE.open() as fd:
         inventory = json.load(fd)
-    inventory = list(add_versions(inventory))
+
+    if right_rev is None:
+        _setup_copy_from_source("master")  # To have tags available
+        inventory = list(add_versions(inventory, old_strategy))
 
     # Prevent interference from parent pyproject.toml
     (SNIPPETS_ROOT / "mypy.ini").write_text(MYPY_CONFIG)
 
     if left:
         LOG.info("Running left (current) mypy...")
-        run_left(inventory)
+        run_left(inventory, left_rev)
         LOG.info("Running left (current) mypy done.")
     if right:
         LOG.info("Running right (referenced) mypy...")
-        run_right(inventory)
+        run_right(inventory, right_rev)
         LOG.info("Running right (referenced) mypy done.")
 
 
-def add_versions(inventory: list[InventoryItem]) -> Iterator[InventoryItem]:
+def add_versions(
+    inventory: list[InventoryItem], old_strategy: OldStrategy
+) -> Iterator[InventoryItem]:
     releases = _get_releases()
     dates = sorted(releases)
     for file in inventory:
@@ -82,7 +96,11 @@ def add_versions(inventory: list[InventoryItem]) -> Iterator[InventoryItem]:
             ver = releases[dates[latest_release_index]]
         parsed = _parse_semver(ver)
         if parsed is None or parsed < MIN_SUPPORTED_MYPY:
-            continue
+            if old_strategy == "cap":
+                parsed = MIN_SUPPORTED_MYPY
+                ver = ".".join(map(str, parsed))
+            else:
+                continue
         yield file | {"mypy_version": ver}
 
 
@@ -106,14 +124,14 @@ def _get_releases() -> dict[datetime, str]:
     return date_to_tag
 
 
-def run_left(inventory: list[InventoryItem]) -> None:
+def run_left(inventory: list[InventoryItem], rev: str) -> None:
     shutil.rmtree(LEFT_OUTPUTS)
     LEFT_OUTPUTS.mkdir()
-    mypy = _setup_copy_from_source(LEFT, "master")
+    mypy = _setup_mypy(rev)
     run_on_files(mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS)
 
 
-def run_right(inventory: list[InventoryItem]) -> None:
+def run_right(inventory: list[InventoryItem], rev: str | None) -> None:
     shutil.rmtree(RIGHT_OUTPUTS)
     RIGHT_OUTPUTS.mkdir()
 
@@ -124,15 +142,22 @@ def run_right(inventory: list[InventoryItem]) -> None:
         assert parsed, ver
         return parsed
 
-    for ver, files_ in groupby(sorted(inventory, key=get_ver), key=get_ver):
-        files = list(files_)
-        try:
-            mypy = _setup_copy_from_pypi(RIGHT, ".".join(map(str, ver)))
-        except UnknownVersionError:
-            LOG.warning("Failed to switch to version %s", ver)
-            continue
+    if rev is None:
+        # Use guessed version for each snippet
+        for ver, files_ in groupby(sorted(inventory, key=get_ver), key=get_ver):
+            files = list(files_)
+            try:
+                mypy = _setup_copy_from_pypi(".".join(map(str, ver)))
+            except UnknownVersionError:
+                LOG.warning("Failed to switch to version %s", ver)
+                continue
+            run_on_files(
+                mypy, [SNIPPETS_ROOT / f["filename"] for f in files], RIGHT_OUTPUTS
+            )
+    else:
+        mypy = _setup_mypy(rev)
         run_on_files(
-            mypy, [SNIPPETS_ROOT / f["filename"] for f in files], RIGHT_OUTPUTS
+            mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
         )
 
 
@@ -180,17 +205,23 @@ def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> str:
         return text
 
 
-def _setup_copy_from_source(dest: Path, rev: str = "master") -> Path:
+def _setup_mypy(rev: str) -> Path:
+    if (parts := _parse_semver(rev)) is not None:
+        # Prefer PyPI installs
+        try:
+            return _setup_copy_from_pypi(".".join(map(str, parts)))
+        except UnknownVersionError:
+            LOG.info("Failed to install mypy '%s' from PyPI, trying git...", rev)
+    return _setup_copy_from_source(rev)
+
+
+def _setup_copy_from_source(rev: str = "master") -> Path:
     LOG.debug("Switching to mypy version %s", rev)
+    dest = LEFT
     wd = dest.resolve()
     if not dest.is_dir():
         subprocess.check_output(
-            [
-                GIT,
-                "clone",
-                "https://github.com/python/mypy",
-                str(wd),
-            ],
+            [GIT, "clone", "https://github.com/python/mypy", str(wd)],
             stderr=subprocess.STDOUT,
         )
         _call_uv(["venv"], wd)
@@ -211,10 +242,10 @@ def _setup_copy_from_source(dest: Path, rev: str = "master") -> Path:
     return dest / ".venv/bin/mypy"
 
 
-def _setup_copy_from_pypi(dest: Path, rev: str) -> Path:
+def _setup_copy_from_pypi(rev: str) -> Path:
     for minor in [13, 10]:  # intermediate versions never help; below 8 is too old
         try:
-            path = _setup_copy_from_pypi_with_python(dest, rev, f"3.{minor}")
+            path = _setup_copy_from_pypi_with_python(rev, f"3.{minor}")
         except IncompatiblePythonError:
             LOG.info("Python 3.%d too new for mypy %s.", minor, rev)
             continue
@@ -224,7 +255,8 @@ def _setup_copy_from_pypi(dest: Path, rev: str) -> Path:
     raise UnknownVersionError(f"Failed to find a suitable python for mypy {rev}")
 
 
-def _setup_copy_from_pypi_with_python(dest: Path, rev: str, python: str) -> Path:
+def _setup_copy_from_pypi_with_python(rev: str, python: str) -> Path:
+    dest = RIGHT
     dest.mkdir(exist_ok=True)
     wd = dest.resolve()
     venv = f".venv{python}"

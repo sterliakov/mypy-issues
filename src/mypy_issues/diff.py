@@ -31,23 +31,32 @@ def diff(*, interactive: bool = True, print_snippets: bool = True) -> None:
         _, iss, _ = filename.split("_", 2)
         return int(iss)
 
-    printer_cls = InteractivePrinter if interactive else NonInteractivePrinter
     with ISSUES_FILE.open() as fd:
         issues = {int(n): Issue.model_validate(iss) for n, iss in json.load(fd).items()}
+
+    printer_cls = InteractivePrinter if interactive else NonInteractivePrinter
     printer = printer_cls(issues, print_snippets=print_snippets)
-    printer.cleanup()
+    printer.setup()
     names = {get_issue_no(f.name) for f in LEFT_OUTPUTS.iterdir()}
     for issue_no in sorted(names, reverse=True):
         if diffs := diff_one(f"gh_{issue_no}"):
             printer.print_issue(diffs, issue_no)
+    printer.finalize()
 
 
 class Printer(ABC):
-    @abstractmethod
-    def print_issue(self, diffs: list[tuple[str, str]], issue_number: int) -> None: ...
+    def __init__(self) -> None:
+        self.count = 0
 
-    def cleanup(self) -> None:  # noqa: B027
+    @abstractmethod
+    def print_issue(self, diffs: list[tuple[str, str]], issue_number: int) -> None:
+        self.count += 1
+
+    def setup(self) -> None:  # noqa: B027
         pass
+
+    def finalize(self) -> None:
+        print(f"Found {self.count:d} issues with different output.")
 
 
 class NonInteractivePrinter(Printer):
@@ -56,10 +65,12 @@ class NonInteractivePrinter(Printer):
     def __init__(
         self, issues: dict[int, Issue], *, print_snippets: bool = True
     ) -> None:
+        super().__init__()
         self.issues = issues
         self.print_snippets = print_snippets
 
     def print_issue(self, diffs: list[tuple[str, str]], issue_number: int) -> None:
+        super().print_issue(diffs, issue_number)
         print("=" * self.sep_width)
         print(f"#{issue_number}: {self.issues[issue_number].title}")
         labels = ", ".join(
@@ -87,15 +98,43 @@ class InteractivePrinter(NonInteractivePrinter):
         "b": RUN_OUTPUTS_ROOT / "better.txt",
         "w": RUN_OUTPUTS_ROOT / "worse.txt",
         "s": RUN_OUTPUTS_ROOT / "same.txt",
-        "i": RUN_OUTPUTS_ROOT / "invalid.txt",
         "n": RUN_OUTPUTS_ROOT / "notes.txt",
     }
 
-    def cleanup(self) -> None:
-        for f in self.files.values():
-            f.unlink(missing_ok=True)
+    def __init__(
+        self, issues: dict[int, Issue], *, print_snippets: bool = True
+    ) -> None:
+        super().__init__(issues, print_snippets=print_snippets)
+        self.skip: set[int] = set()
+
+    def setup(self) -> None:
+        super().setup()
+        if not any(f.is_file() for f in self.files.values()):
+            return
+        confirm = input(
+            "Clean previous results (if no, will only show missing entries)? [y/N] "
+        ).lower()
+        if confirm in {"y", "yes"}:
+            for f in self.files.values():
+                f.unlink(missing_ok=True)
+        else:
+            self.skip = {
+                int(iss.split(":")[0])
+                for f in self.files.values()
+                for iss in f.read_text().splitlines()
+            }
+            self.count += len(self.skip)
+
+    def finalize(self) -> None:
+        super().finalize()
+        print("Review results written to:")
+        for file in self.files.values():
+            lines = len(file.read_text().splitlines())
+            print(f"{file.stem.title()}: {file.relative_to('.')} ({lines} issues)")
 
     def print_issue(self, diffs: list[tuple[str, str]], issue_number: int) -> None:
+        if issue_number in self.skip:
+            return
         print("\033[H\033[J", end="")
         super().print_issue(diffs, issue_number)
         while True:
@@ -108,16 +147,14 @@ class InteractivePrinter(NonInteractivePrinter):
                 with self.files[ch].open("a") as fd:
                     fd.write(f"{issue_number}: {message}\n")
                 break
-            elif ch in "fbwsi":
+            elif ch in "fbws":
                 with self.files[ch].open("a") as fd:
                     fd.write(f"{issue_number}\n")
                 break
 
     def _print_prompt(self) -> None:
-        print(
-            "f=fixed | b=better | w=worse | s=same | i=invalid | n=note | c=context: "
-        )
-        print("How's this? [fbwsinc] ")
+        print("f=fixed | b=better | w=worse | s=same | n=note | c=context: ")
+        print("How's this (don't press Enter)? [fbwsinc] ")
 
     def print_context(self, issue_number: int) -> None:
         print("~" * self.sep_width)

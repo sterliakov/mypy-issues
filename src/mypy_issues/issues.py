@@ -5,12 +5,13 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from collections.abc import Iterator
 from datetime import datetime
 from functools import partial
 from multiprocessing.pool import ThreadPool
-from typing import Any, Final, NamedTuple
+from typing import Any, NamedTuple
 
 from githubkit import GitHub
 from githubkit.utils import UNSET
@@ -20,8 +21,6 @@ from markdown_it import MarkdownIt
 from .config import INVENTORY_FILE, ISSUES_FILE, SNIPPETS_ROOT, InventoryItem
 
 LOG = logging.getLogger("issues")
-
-RUFF: Final = "ruff"
 
 
 def download_snippets(token: str, *, limit: int | None = None) -> None:
@@ -180,7 +179,15 @@ def store_snippet(snip: Snippet) -> bool:
     dest = SNIPPETS_ROOT / snip.filename
     dest.write_text(snip.body)
     try:
-        subprocess.check_output([RUFF, "check", dest.resolve(), "--select", "PYI001"])
+        subprocess.check_output([
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            dest.resolve(),
+            "--select",
+            "PYI001",
+        ])
     except subprocess.CalledProcessError:
         LOG.debug("Rejecting snippet %s: syntax error", dest.name)
         dest.rename(dest.with_name(dest.name + ".bak"))
