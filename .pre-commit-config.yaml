@@ -19,7 +19,7 @@ repos:
 
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.1
+    rev: v0.9.3
     hooks:
     -   id: ruff-format
         exclude: stubs
@@ -28,7 +28,7 @@ repos:
         exclude: migrations
 
 -   repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.5.20
+    rev: 0.5.25
     hooks:
     -   id: uv-lock
 
@@ -44,6 +44,21 @@ repos:
         args: [--autofix, --indent, '4']
     -   id: pretty-format-toml
         args: [--autofix, --indent, '4', --trailing-comma]
+
+-   repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.31.0
+    hooks:
+    -   id: check-github-workflows
+-   repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+    -   id: actionlint
+        additional_dependencies:
+        -   github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.10.0
+-   repo: https://github.com/woodruffw/zizmor-pre-commit
+    rev: v1.3.0
+    hooks:
+    -   id: zizmor
 
 -   repo: local
     hooks:

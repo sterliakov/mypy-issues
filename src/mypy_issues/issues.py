@@ -14,7 +14,7 @@ from typing import Any, NamedTuple
 
 from githubkit import GitHub
 from githubkit.utils import UNSET
-from githubkit.versions.latest.models import GistSimplePropFiles, Issue
+from githubkit.versions.latest.models import GistSimplePropFiles, Issue, PullRequest
 from markdown_it import MarkdownIt
 
 from .config import INVENTORY_FILE, ISSUES_FILE, SNIPPETS_ROOT, InventoryItem
@@ -152,6 +152,13 @@ def _get_closed_issues(
             if iss.pull_request is UNSET:
                 yield iss
         page += 1
+
+
+def get_pr(
+    gh_token: str, pr_number: int, *, org: str = "python", repo: str = "mypy"
+) -> PullRequest:
+    gh = GitHub(gh_token)
+    return gh.rest.pulls.get(org, repo, pr_number).parsed_data
 
 
 def extract_snippets(

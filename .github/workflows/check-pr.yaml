@@ -1,0 +1,111 @@
+name: check-pr
+
+on:
+    workflow_dispatch:
+        inputs:
+            pr:
+                type: number
+                description: PR to check
+
+permissions:
+    contents: read
+
+jobs:
+    fetch:
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v4
+            with:
+                persist-credentials: false
+        -   uses: actions/setup-python@v5
+            with:
+                python-version: '3.13'
+        -   uses: yezz123/setup-uv@v4
+            with:
+                uv-venv: .venv
+
+        -   uses: actions/cache/restore@v4
+            id: restore-issues
+            with:
+                path: downloaded/
+                key: issues-dump-${{ github.run_id }}
+                restore-keys: issues-dump-
+
+        -   name: Fetch issues
+            if: steps.restore-issues.outputs.cache-hit != 'true'
+            run: |
+                uv run fetch
+            env:
+                GH_ACCESS_TOKEN: ${{ secrets.GITHUB_PAT }}
+
+        -   uses: actions/upload-artifact@v4
+            with:
+                name: issues-dump
+                path: downloaded/
+                retention-days: 1
+
+    apply:
+        runs-on: ubuntu-latest
+        needs: [fetch]
+        strategy:
+            matrix:
+                side: [left, right]
+
+        steps:
+        -   uses: actions/checkout@v4
+            with:
+                persist-credentials: false
+        -   uses: actions/setup-python@v5
+            with:
+                python-version: '3.13'
+        -   uses: yezz123/setup-uv@v4
+            with:
+                uv-venv: .venv
+
+        -   uses: actions/download-artifact@v4
+            with:
+                name: issues-dump
+                path: downloaded/
+
+        -   name: Apply mypy
+            run: |
+                uv run run --only-${{ matrix.side }} --pr "${PR}"
+            env:
+                GH_ACCESS_TOKEN: ${{ secrets.GITHUB_PAT }}
+                PR: ${{ inputs.pr }}
+
+        -   uses: actions/upload-artifact@v4
+            with:
+                name: results-${{ matrix.side }}
+                path: outputs/
+
+    diff:
+        runs-on: ubuntu-latest
+        needs: [apply]
+
+        steps:
+        -   uses: actions/checkout@v4
+            with:
+                persist-credentials: false
+        -   uses: actions/setup-python@v5
+            with:
+                python-version: '3.13'
+        -   uses: yezz123/setup-uv@v4
+            with:
+                uv-venv: .venv
+
+        -   uses: actions/download-artifact@v4
+            with:
+                name: issues-dump
+                path: downloaded/
+        -   uses: actions/download-artifact@v4
+            with:
+                pattern: results-*
+                path: outputs/
+                merge-multiple: true
+
+        -   name: Apply mypy
+            run: |
+                uv run diff --no-snippets
+            env:
+                GH_ACCESS_TOKEN: ${{ secrets.GITHUB_PAT }}

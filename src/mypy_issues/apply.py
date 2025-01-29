@@ -57,7 +57,9 @@ def run_apply(
     left: bool = True,
     right: bool = True,
     left_rev: str = "master",
+    left_origin: str = "python/mypy",
     right_rev: str | None = None,
+    right_origin: str = "pypi",
     old_strategy: OldStrategy = "skip",
 ) -> None:
     with INVENTORY_FILE.open() as fd:
@@ -72,11 +74,11 @@ def run_apply(
 
     if left:
         LOG.info("Running left (current) mypy...")
-        run_left(inventory, left_rev)
+        run_left(inventory, left_rev, left_origin)
         LOG.info("Running left (current) mypy done.")
     if right:
         LOG.info("Running right (referenced) mypy...")
-        run_right(inventory, right_rev)
+        run_right(inventory, right_rev, right_origin)
         LOG.info("Running right (referenced) mypy done.")
 
 
@@ -124,14 +126,14 @@ def _get_releases() -> dict[datetime, str]:
     return date_to_tag
 
 
-def run_left(inventory: list[InventoryItem], rev: str) -> None:
+def run_left(inventory: list[InventoryItem], rev: str, origin: str) -> None:
     shutil.rmtree(LEFT_OUTPUTS)
     LEFT_OUTPUTS.mkdir()
-    mypy = _setup_mypy(rev)
+    mypy = _setup_mypy(rev, origin)
     run_on_files(mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS)
 
 
-def run_right(inventory: list[InventoryItem], rev: str | None) -> None:
+def run_right(inventory: list[InventoryItem], rev: str | None, origin: str) -> None:
     shutil.rmtree(RIGHT_OUTPUTS)
     RIGHT_OUTPUTS.mkdir()
 
@@ -142,7 +144,7 @@ def run_right(inventory: list[InventoryItem], rev: str | None) -> None:
         assert parsed, ver
         return parsed
 
-    if rev is None:
+    if rev is None and origin == "pypi":
         # Use guessed version for each snippet
         for ver, files_ in groupby(sorted(inventory, key=get_ver), key=get_ver):
             files = list(files_)
@@ -154,11 +156,13 @@ def run_right(inventory: list[InventoryItem], rev: str | None) -> None:
             run_on_files(
                 mypy, [SNIPPETS_ROOT / f["filename"] for f in files], RIGHT_OUTPUTS
             )
-    else:
-        mypy = _setup_mypy(rev)
+    elif rev is not None:
+        mypy = _setup_mypy(rev, origin)
         run_on_files(
             mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
         )
+    else:
+        raise RuntimeError("Only 'pypi' origin supported for 'guess' revision.")
 
 
 def run_on_files(mypy: Path, files: Sequence[Path], dest_root: Path) -> None:
@@ -205,17 +209,17 @@ def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> str:
         return text
 
 
-def _setup_mypy(rev: str) -> Path:
-    if (parts := _parse_semver(rev)) is not None:
+def _setup_mypy(rev: str, origin: str) -> Path:
+    if origin == "pypi" and (parts := _parse_semver(rev)) is not None:
         # Prefer PyPI installs
         try:
             return _setup_copy_from_pypi(".".join(map(str, parts)))
         except UnknownVersionError:
             LOG.info("Failed to install mypy '%s' from PyPI, trying git...", rev)
-    return _setup_copy_from_source(rev)
+    return _setup_copy_from_source(rev, origin)
 
 
-def _setup_copy_from_source(rev: str = "master") -> Path:
+def _setup_copy_from_source(rev: str = "master", origin: str = "python/mypy") -> Path:
     LOG.debug("Switching to mypy version %s", rev)
     dest = LEFT
     wd = dest.resolve()
@@ -225,10 +229,23 @@ def _setup_copy_from_source(rev: str = "master") -> Path:
             stderr=subprocess.STDOUT,
         )
         _call_uv(["venv"], wd)
-    else:
+
+    remotes = {
+        r.split("\t")[0]
+        for r in subprocess.check_output(
+            [GIT, "remote", "-v"], cwd=wd, text=True
+        ).splitlines()
+        if "(fetch)" in r
+    }
+    remote_name = origin.replace("/", "__")
+    if remote_name not in remotes:
         subprocess.check_output(
-            [GIT, "fetch", "--all"], cwd=wd, stderr=subprocess.STDOUT
+            [GIT, "remote", "add", remote_name, f"https://github.com/{origin}"],
+            cwd=wd,
+            stderr=subprocess.STDOUT,
         )
+
+    subprocess.check_output([GIT, "fetch", "--all"], cwd=wd, stderr=subprocess.STDOUT)
 
     try:
         subprocess.check_output(

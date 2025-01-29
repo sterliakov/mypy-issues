@@ -91,8 +91,9 @@ extend-ignore = [
     "CPY",  # copyright
     "TC00",  # Move ... import `...` into a type-checking block
     "EM101",  # Exception must not use a string literal, assign to variable first
-    "PLR6301",  # Method `xxx` could be a function, class method, or static method
     "PLC0415",  # `import` should be at the top-level of a file
+    "PLR6301",  # Method `xxx` could be a function, class method, or static method
+    "PLR0913",  # Too many arguments in function definition (7 > 5)
     "E501",  # Let ruff care about line width, if not splitable - go on
     # conflicts with ruff-fmt
     "COM812",
