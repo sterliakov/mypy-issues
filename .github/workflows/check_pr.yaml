@@ -32,11 +32,13 @@ jobs:
                 restore-keys: issues-dump-
 
         -   name: Fetch issues
-            if: steps.restore-issues.outputs.cache-hit != 'true'
+            if: ${{ steps.restore-issues.outputs.cache-hit != 'true' }}
             run: |
+                printf 'Cache status: %s' "$CACHE_STATUS"
                 uv run fetch
             env:
                 GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+                CACHE_STATUS: ${{ steps.restore-issues.outputs.cache-hit }}
 
         -   uses: actions/upload-artifact@v4
             with:

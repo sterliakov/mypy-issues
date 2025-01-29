@@ -26,3 +26,5 @@ jobs:
                 uv sync --dev
                 uv pip install pip
         -   uses: pre-commit/action@v3.0.1
+            env:
+                GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}

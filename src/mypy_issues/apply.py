@@ -127,14 +127,16 @@ def _get_releases() -> dict[datetime, str]:
 
 
 def run_left(inventory: list[InventoryItem], rev: str, origin: str) -> None:
-    shutil.rmtree(LEFT_OUTPUTS)
+    if LEFT_OUTPUTS.is_dir():
+        shutil.rmtree(LEFT_OUTPUTS)
     LEFT_OUTPUTS.mkdir()
     mypy = _setup_mypy(rev, origin)
     run_on_files(mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS)
 
 
 def run_right(inventory: list[InventoryItem], rev: str | None, origin: str) -> None:
-    shutil.rmtree(RIGHT_OUTPUTS)
+    if RIGHT_OUTPUTS.is_dir():
+        shutil.rmtree(RIGHT_OUTPUTS)
     RIGHT_OUTPUTS.mkdir()
 
     def get_ver(item: InventoryItem) -> tuple[int, int] | tuple[int, int, int]:
