@@ -35,7 +35,8 @@ RIGHT: Final = Path("right_mypy")
 GIT: Final = "git"
 UV: Final = "uv"
 
-MIN_SUPPORTED_MYPY = (0, 800)
+MIN_SUPPORTED_MYPY: Final = (0, 800)
+DEFAULT_PACKAGES: Final = ("attrs",)
 
 MYPY_CONFIG: Final = """
 [mypy]
@@ -231,6 +232,7 @@ def _setup_copy_from_source(rev: str = "master", origin: str = "python/mypy") ->
             stderr=subprocess.STDOUT,
         )
         _call_uv(["venv"], wd)
+        _call_uv(["pip", "install", *DEFAULT_PACKAGES], wd)
 
     remotes = {
         r.split("\t")[0]
@@ -263,7 +265,6 @@ def _setup_copy_from_source(rev: str = "master", origin: str = "python/mypy") ->
 
     LOG.debug("Installing mypy %s from source...", rev)
     _call_uv(["pip", "install", ".", "--reinstall"], wd)
-    # TODO: install most common packages like attrs?
     return dest / ".venv/bin/mypy"
 
 
@@ -300,6 +301,9 @@ def _setup_copy_from_pypi_with_python(rev: str, python: str) -> Path:
             ) from exc
         raise UnknownVersionError(f"Unknown version: {rev}") from exc
     else:
+        _call_uv(
+            ["pip", "install", *DEFAULT_PACKAGES, "--python", f"{venv}/bin/python"], wd
+        )
         return dest / venv / "bin/mypy"
 
 
