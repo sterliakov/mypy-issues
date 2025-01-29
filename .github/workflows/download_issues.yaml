@@ -3,7 +3,7 @@ name: Sync issues
 on:
     workflow_dispatch:
     schedule:
-    -   cron: 30 */1 * * *
+    -   cron: 20 */4 * * *
 
 permissions:
     contents: read

@@ -1,4 +1,4 @@
-name: check-pr
+name: Find PR diffs
 
 on:
     workflow_dispatch:
@@ -14,24 +14,28 @@ jobs:
     fetch:
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
-            with:
-                persist-credentials: false
-        -   uses: actions/setup-python@v5
-            with:
-                python-version: '3.13'
-        -   uses: yezz123/setup-uv@v4.1
-            with:
-                uv-venv: .venv
-                uv-version: 0.5.25
-                uv-cache: true
-
         -   uses: actions/cache/restore@v4
             id: restore-issues
+            name: Restore cache
             with:
                 path: downloaded/
                 key: issues-dump-${{ github.run_id }}
                 restore-keys: issues-dump-
+
+        -   uses: actions/checkout@v4
+            if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
+            with:
+                persist-credentials: false
+        -   uses: actions/setup-python@v5
+            if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
+            with:
+                python-version: '3.13'
+        -   uses: yezz123/setup-uv@v4.1
+            if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
+            with:
+                uv-venv: .venv
+                uv-version: 0.5.25
+                uv-cache: true
 
         -   name: Fetch issues
             # cache-hit is false for partial matches
