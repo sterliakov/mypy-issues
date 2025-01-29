@@ -24,4 +24,5 @@ jobs:
         -   name: install project
             run: |
                 uv sync --dev
+                uv pip install pip
         -   uses: pre-commit/action@v3.0.1
