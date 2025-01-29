@@ -36,7 +36,7 @@ jobs:
             run: |
                 uv run fetch
             env:
-                GH_ACCESS_TOKEN: ${{ secrets.GITHUB_PAT }}
+                GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
 
         -   uses: actions/upload-artifact@v4
             with:
@@ -71,7 +71,7 @@ jobs:
             run: |
                 uv run run --only-${{ matrix.side }} --pr "${PR}"
             env:
-                GH_ACCESS_TOKEN: ${{ secrets.GITHUB_PAT }}
+                GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
                 PR: ${{ inputs.pr }}
 
         -   uses: actions/upload-artifact@v4
@@ -108,4 +108,4 @@ jobs:
             run: |
                 uv run diff --no-snippets
             env:
-                GH_ACCESS_TOKEN: ${{ secrets.GITHUB_PAT }}
+                GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
