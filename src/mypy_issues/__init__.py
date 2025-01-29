@@ -122,10 +122,10 @@ def _make_apply_parser() -> argparse.ArgumentParser:
 
 def _update_apply_args_to_pr(args: argparse.Namespace, gh_token: str) -> None:
     pr = get_pr(gh_token, args.pr)
-    args.right_origin = pr.head.repo.full_name
-    args.right_rev = pr.head.sha
-    args.left_origin = pr.base.repo.full_name
-    args.left_rev = pr.base.sha
+    args.left_origin = pr.head.repo.full_name
+    args.left_rev = pr.head.sha
+    args.right_origin = pr.base.repo.full_name
+    args.right_rev = pr.base.sha
 
 
 def _make_diff_parser() -> argparse.ArgumentParser:

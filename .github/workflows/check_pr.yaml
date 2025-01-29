@@ -106,7 +106,7 @@ jobs:
                 path: outputs/
                 merge-multiple: true
 
-        -   name: Apply mypy
+        -   name: Compare outputs
             run: |
                 uv run diff --no-snippets
             env:
