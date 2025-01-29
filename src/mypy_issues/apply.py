@@ -263,6 +263,7 @@ def _setup_copy_from_source(rev: str = "master", origin: str = "python/mypy") ->
 
     LOG.debug("Installing mypy %s from source...", rev)
     _call_uv(["pip", "install", ".", "--reinstall"], wd)
+    # TODO: install most common packages like attrs?
     return dest / ".venv/bin/mypy"
 
 

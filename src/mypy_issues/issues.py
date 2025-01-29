@@ -244,18 +244,32 @@ def store_snippet(snip: Snippet) -> bool:
     dest = SNIPPETS_ROOT / snip.filename
     dest.write_text(snip.body)
     try:
-        subprocess.check_output([
-            sys.executable,
-            "-m",
-            "ruff",
-            "check",
-            dest.resolve(),
-            "--select",
-            "PYI001",
-        ])
-    except subprocess.CalledProcessError:
-        LOG.debug("Rejecting snippet %s: syntax error", dest.name)
-        dest.rename(dest.with_name(dest.name + ".bak"))
-        return False
+        # fmt: off
+        subprocess.check_output(
+            [
+                sys.executable, "-m", "ruff",
+                "check",
+                str(dest.resolve()),
+                "--select", "F821",
+                "--output-format", "concise",
+            ],
+            text=True,
+            stderr=subprocess.STDOUT,
+            env={"NO_COLOR": "1"},
+        )
+        # fmt: on
+    except subprocess.CalledProcessError as exc:
+        if "SyntaxError" in exc.stdout:
+            LOG.debug("Rejecting snippet %s: syntax error", dest.name)
+            dest.rename(dest.with_name(dest.name + ".bak"))
+            return False
+        has_undef_names = any(
+            "F821" in line
+            for line in exc.stdout.splitlines()
+            if "reveal_type" not in line
+        )
+        if has_undef_names and "__future__" not in snip.body:
+            # Try to recover
+            dest.write_text("from typing import *  # Added by us\n" + snip.body)
     LOG.debug("Added snippet %s.", dest.name)
     return True
