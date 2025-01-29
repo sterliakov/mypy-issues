@@ -26,7 +26,12 @@ from .config import (
 )
 
 
-def diff(*, interactive: bool = True, print_snippets: bool = True) -> None:
+def diff(
+    *,
+    interactive: bool = True,
+    print_snippets: bool = True,
+    diff_originals: bool = False,
+) -> None:
     def get_issue_no(filename: str) -> int:
         _, iss, _ = filename.split("_", 2)
         return int(iss)
@@ -39,7 +44,7 @@ def diff(*, interactive: bool = True, print_snippets: bool = True) -> None:
     printer.setup()
     names = {get_issue_no(f.name) for f in LEFT_OUTPUTS.iterdir()}
     for issue_no in sorted(names, reverse=True):
-        if diffs := diff_one(f"gh_{issue_no}"):
+        if diffs := diff_one(f"gh_{issue_no}", diff_originals=diff_originals):
             printer.print_issue(diffs, issue_no)
     printer.finalize()
 
@@ -211,7 +216,7 @@ class InteractivePrinter(NonInteractivePrinter):
             return ch
 
 
-def diff_one(prefix: str) -> list[tuple[str, str]]:
+def diff_one(prefix: str, *, diff_originals: bool = False) -> list[tuple[str, str]]:
     left_files = list(LEFT_OUTPUTS.glob(f"{prefix}_*"))
     right_files = list(RIGHT_OUTPUTS.glob(f"{prefix}_*"))
     if not left_files or not right_files:
@@ -223,15 +228,26 @@ def diff_one(prefix: str) -> list[tuple[str, str]]:
         if not right.is_file():
             continue
         right_out = right.read_text()
+        left_out = left.read_text()
         if "syntax error in type comment" in right_out:
             # mypy too old, something went wrong
             continue
         snips.append((SNIPPETS_ROOT / left.with_suffix(".py").name).read_text().strip())
-        diff_iter = difflib.unified_diff(
-            _normalize(right_out),
-            _normalize(left.read_text()),
-            lineterm="",
-        )
+        if diff_originals:
+            if _normalize(right_out) != _normalize(left_out):
+                diff_iter = difflib.unified_diff(
+                    _normalize(right_out),
+                    _normalize(left_out),
+                    lineterm="",
+                )
+            else:
+                diff_iter = iter([])
+        else:
+            diff_iter = difflib.unified_diff(
+                _normalize(right_out),
+                _normalize(left_out),
+                lineterm="",
+            )
         diff = list(diff_iter)[2:]  # Remove ---/+++ header
 
         outs.append("\n".join(map(colorize, diff)))

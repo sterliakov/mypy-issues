@@ -108,6 +108,6 @@ jobs:
 
         -   name: Compare outputs
             run: |
-                uv run diff --no-snippets
+                uv run diff --no-snippets --diff-originals
             env:
                 GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}

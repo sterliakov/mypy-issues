@@ -56,7 +56,11 @@ def run_mypy() -> None:
 
 def run_diff() -> None:
     args = _make_diff_parser().parse_args()
-    diff(interactive=args.interactive, print_snippets=not args.no_snippets)
+    diff(
+        interactive=args.interactive,
+        print_snippets=not args.no_snippets,
+        diff_originals=args.diff_originals,
+    )
 
 
 def _make_fetch_parser() -> argparse.ArgumentParser:
@@ -139,6 +143,11 @@ def _make_diff_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--no-snippets", action="store_true", help="Only print discovered output diffs"
+    )
+    parser.add_argument(
+        "--diff-originals",
+        action="store_true",
+        help="Print diffs of unmodified outputs if normalized versions differ",
     )
     return parser
 
