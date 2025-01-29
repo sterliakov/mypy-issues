@@ -21,10 +21,14 @@ jobs:
         -   uses: yezz123/setup-uv@v4
             with:
                 uv-venv: .venv
+                uv-version: '0.5'
+                uv-cache: true
+
         -   name: install project
             run: |
                 uv sync --dev
                 uv pip install pip
+
         -   uses: pre-commit/action@v3.0.1
             env:
                 GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}

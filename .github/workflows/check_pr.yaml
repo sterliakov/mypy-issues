@@ -23,6 +23,8 @@ jobs:
         -   uses: yezz123/setup-uv@v4
             with:
                 uv-venv: .venv
+                uv-version: '0.5'
+                uv-cache: true
 
         -   uses: actions/cache/restore@v4
             id: restore-issues
@@ -62,6 +64,8 @@ jobs:
         -   uses: yezz123/setup-uv@v4
             with:
                 uv-venv: .venv
+                uv-version: '0.5'
+                uv-cache: true
 
         -   uses: actions/download-artifact@v4
             with:
@@ -95,6 +99,8 @@ jobs:
         -   uses: yezz123/setup-uv@v4
             with:
                 uv-venv: .venv
+                uv-version: '0.5'
+                uv-cache: true
 
         -   uses: actions/download-artifact@v4
             with:
