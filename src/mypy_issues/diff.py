@@ -121,6 +121,7 @@ class InteractivePrinter(NonInteractivePrinter):
             self.skip = {
                 int(iss.split(":")[0])
                 for f in self.files.values()
+                if f.is_file()
                 for iss in f.read_text().splitlines()
             }
             self.count += len(self.skip)
@@ -242,15 +243,19 @@ def diff_one(prefix: str) -> list[tuple[str, str]]:
 
 def _normalize(text: str) -> list[str]:
     text = (
-        text.replace("<nothing>", "Never")
+        text.replace("'", '"')
+        .replace("<nothing>", "Never")
         .replace("NoReturn", "Never")
         .replace('"Never"', "Never")
+        .replace('"super()"', "super()")
+        .replace("super()", '"super()"')
+        .replace('"NamedTuple()"', "NamedTuple()")
+        .replace("NamedTuple()", '"NamedTuple()"')
         .replace(
             "Function is missing a return type annotation",
             "Function is missing a type annotation",
         )
     )
-    text = text.replace("'", '"')
     text = re.sub(r"`-?\d+", "", text)
     text = re.sub(r"(.)gh_\d+_\d+\.", r"\1", text)
     for typ in ["Type", "List", "Dict", "Set", "FrozenSet", "Tuple"]:
@@ -260,30 +265,19 @@ def _normalize(text: str) -> list[str]:
     text = re.sub(r"\bellipsis\b", "EllipsisType", text)
     text = re.sub(r"Optional\[(\w+?)\]", r"\1 | None", text)
     text = re.sub(r'"Optional\[(.+?)\]"', r'"\1 | None"', text)
-    text = re.sub(
-        r'"Union\[(.+?)\]"', lambda m: '"' + _piped_union(m.group(1)) + '"', text
-    )
-    text = re.sub(r"Union\[([\w .,]+?)\]", lambda m: _piped_union(m.group(1)), text)
-    text = re.sub(
+    while "Union[" in text:
+        text = re.sub(r"Union\[(.+)", lambda m: _piped_union(m.group(1)), text)
+    for mod in [
         r'Skipping analyzing "(.+?)": found module but no type hints or library stubs',
-        r'Cannot find implementation or library stub for module named "\1"',
-        text,
-    )
-    text = re.sub(
         r'Skipping analyzing "(.+)": module is installed, but missing library stubs or py\.typed marker',
-        r'Cannot find implementation or library stub for module named "\1"',
-        text,
-    )
-    text = re.sub(
         r'Library stubs not installed for "(.+)" \(or incompatible with Python 3\.\d+\)',
-        r'Cannot find implementation or library stub for module named "\1"',
-        text,
-    )
-    text = re.sub(
         r'Library stubs not installed for "(.+)"',
-        r'Cannot find implementation or library stub for module named "\1"',
-        text,
-    )
+    ]:
+        text = re.sub(
+            mod,
+            r'Cannot find implementation or library stub for module named "\1"',
+            text,
+        )
     text = _rewrite_literals(text)
     text = re.sub(r"\*(?!\w)", "", text)  # Old-style inferred type asterisks
     text = re.sub(r"\bunused\b", "Unused", text)
@@ -321,10 +315,12 @@ def _piped_union(s: str) -> str:
     r = ""
     level = 0
     for c in s:
-        if c == "[":
+        if level >= 0 and c == "[":
             level += 1
         elif c == "]":
             level -= 1
+            if level == -1:
+                continue
         elif c == "," and level == 0:
             r += " |"
             continue

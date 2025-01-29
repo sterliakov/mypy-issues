@@ -232,10 +232,15 @@ def _setup_copy_from_source(rev: str = "master") -> Path:
 
     try:
         subprocess.check_output(
-            [GIT, "checkout", rev], cwd=wd, stderr=subprocess.STDOUT
+            [GIT, "reset", "--hard", f"origin/{rev}"], cwd=wd, stderr=subprocess.STDOUT
         )
-    except subprocess.CalledProcessError as exc:
-        raise UnknownVersionError(f"Unknown version: {rev}") from exc
+    except subprocess.CalledProcessError:
+        try:
+            subprocess.check_output(
+                [GIT, "reset", "--hard", rev], cwd=wd, stderr=subprocess.STDOUT
+            )
+        except subprocess.CalledProcessError as exc:
+            raise UnknownVersionError(f"Unknown version: {rev}") from exc
 
     LOG.debug("Installing mypy %s from source...", rev)
     _call_uv(["pip", "install", ".", "--reinstall"], wd)

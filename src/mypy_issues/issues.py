@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-import shutil
 import subprocess
 import sys
 import threading
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from typing import Any, NamedTuple
@@ -23,20 +22,48 @@ from .config import INVENTORY_FILE, ISSUES_FILE, SNIPPETS_ROOT, InventoryItem
 LOG = logging.getLogger("issues")
 
 
-def download_snippets(token: str, *, limit: int | None = None) -> None:
-    shutil.rmtree(SNIPPETS_ROOT, ignore_errors=True)
-    SNIPPETS_ROOT.mkdir()
+def download_snippets(
+    token: str, *, limit: int | None = None, org: str = "python", repo: str = "mypy"
+) -> None:
+    SNIPPETS_ROOT.mkdir(exist_ok=True)
 
     gh = GitHub(token)
     event = threading.Event()
     inventory: list[InventoryItem] = []
     issues: dict[int, Issue] = {}
+    seen: set[str] = set()
+    since = None
+    if INVENTORY_FILE.is_file() and ISSUES_FILE.is_file():
+        with INVENTORY_FILE.open() as fd:
+            inventory = json.load(fd)
+        with ISSUES_FILE.open() as fd:
+            issues = {
+                int(n): Issue.model_validate(iss) for n, iss in json.load(fd).items()
+            }
+        since = max(
+            (iss.created_at for iss in issues.values()),
+            default=datetime.fromtimestamp(0, tz=UTC),
+        )
+        removed = {iss.number for iss in _get_closed_issues(gh, org, repo, since)}
+        inventory = [
+            snip
+            for snip in inventory
+            if int(snip["filename"].split("_")[1]) not in removed
+        ]
+        issues = {n: iss for n, iss in issues.items() if n not in removed}
+        for n in removed:
+            for file in SNIPPETS_ROOT.glob(f"gh_{n}_*.py"):
+                file.unlink()
+        seen = {snip["filename"] for snip in inventory}
+
     with ThreadPool() as pool:
         for snippets in pool.imap(
             partial(extract_snippets, gh_token=token, event=event),
-            _get_issues(gh, event),
+            _get_issues(gh, event, org, repo, since),
         ):
             for snip, issue in snippets:
+                if snip.filename in seen:
+                    continue
                 if store_snippet(snip):
                     inventory.append({
                         "filename": snip.filename,
@@ -75,16 +102,23 @@ class Snippet(NamedTuple):
         return f"gh_{self.issue}_{self.id}.py"
 
 
-def _get_issues(gh: GitHub[Any], event: threading.Event) -> Iterator[Issue]:
+def _get_issues(
+    gh: GitHub[Any],
+    event: threading.Event,
+    org: str,
+    repo: str,
+    since: datetime | None = None,
+) -> Iterator[Issue]:
     page = 1
     has_more = True
     while has_more and not event.is_set():
         issues = gh.rest.issues.list_for_repo(
-            "python",
-            "mypy",
+            org,
+            repo,
             state="open",
             sort="created",
             direction="desc",
+            since=since or UNSET,
             per_page=100,
             page=page,
         ).parsed_data
@@ -93,6 +127,30 @@ def _get_issues(gh: GitHub[Any], event: threading.Event) -> Iterator[Issue]:
             if iss.pull_request is UNSET:
                 yield iss
         has_more = bool(issues)
+        page += 1
+
+
+def _get_closed_issues(
+    gh: GitHub[Any], org: str, repo: str, since: datetime
+) -> Iterator[Issue]:
+    page = 1
+    while True:
+        issues = gh.rest.issues.list_for_repo(
+            org,
+            repo,
+            state="closed",
+            sort="created",
+            direction="desc",
+            since=since,
+            per_page=100,
+            page=page,
+        ).parsed_data
+        if not issues:
+            break  # type: ignore[unreachable]
+        # See https://github.com/yanyongyu/githubkit/pull/184
+        for iss in issues:  # type: ignore[attr-defined]
+            if iss.pull_request is UNSET:
+                yield iss
         page += 1
 
 
