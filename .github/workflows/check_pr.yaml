@@ -18,6 +18,55 @@ permissions:
     contents: read
 
 jobs:
+    get-target:
+        runs-on: ubuntu-latest
+        permissions:
+            issues: write
+        outputs:
+            pr-number: ${{ steps.pr-number.outputs.pr }}
+        steps:
+        -   name: Get Issue
+            id: get-issue
+            if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
+            uses: actions-cool/issues-helper@v3
+            with:
+                actions: get-issue
+                token: ${{ secrets.GITHUB_TOKEN }}
+
+        -   name: Get PR number to check
+            id: pr-number
+            run: |
+                if [ -z "${INPUT_PR}" ]; then
+                    pr=$(sed -E 's/.*#([[:digit:]]+).*/\1/g' <<<"${ISSUE_TITLE}")
+                else
+                    pr=${INPUT_PR}
+                fi
+
+                re='^[0-9]+$'
+                if ! [[ "$pr" =~ $re ]]; then
+                    msg='No PR number found'
+                elif ! gh --repo python/mypy pr view "$pr"; then
+                    msg=$(printf "PR #%s not found in python/mypy" "$pr")
+                else
+                    echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+                    exit 0
+                fi
+                printf "%s\n" "$msg" >&2
+                printf "msg=%s\n" "$msg" >> "$GITHUB_OUTPUT"
+                exit 1
+            env:
+                GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+                INPUT_PR: ${{ inputs.pr }}
+                ISSUE_TITLE: ${{ steps.get-issue.outputs.issue-title }}
+
+        -   name: Report failure
+            if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
+            uses: actions-cool/issues-helper@v3
+            with:
+                actions: create-comment
+                token: ${{ secrets.GITHUB_TOKEN }}
+                body: ${{ steps.pr-number.outputs.msg }}
+
     fetch:
         runs-on: ubuntu-latest
         steps:
@@ -62,7 +111,7 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             issues: write
-        needs: [fetch]
+        needs: [get-target, fetch]
         strategy:
             matrix:
                 side: [left, right]
@@ -85,38 +134,12 @@ jobs:
                 name: issues-dump
                 path: downloaded/
 
-        -   name: Get Issue
-            id: get-issue
-            if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
-            uses: actions-cool/issues-helper@v3
-            with:
-                actions: get-issue
-                token: ${{ secrets.GITHUB_TOKEN }}
-
-        -   name: Get PR number to check
-            id: pr-number
-            run: |
-                if [ -z "${INPUT_PR}" ]; then
-                    pr=$(sed -E 's/.*#([[:digit:]]+).*/\1/g' <<<"${ISSUE_TITLE}")
-                    if [ -z "$pr" ]; then
-                        echo 'No PR number found' >&2
-                        exit 1
-                    else
-                        echo "pr=${pr}" >> "$GITHUB_OUTPUT"
-                    fi
-                else
-                    echo "pr=${INPUT_PR}" >> "$GITHUB_OUTPUT"
-                fi
-            env:
-                INPUT_PR: ${{ inputs.pr }}
-                ISSUE_TITLE: ${{ steps.get-issue.outputs.issue-title }}
-
         -   name: Apply mypy
             run: |
                 uv run run --only-${{ matrix.side }} --pr "${PR}"
             env:
                 GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
-                PR: ${{ steps.pr-number.outputs.pr }}
+                PR: ${{ needs.get-target.outputs.pr-number }}
                 TQDM_MININTERVAL: '5'
 
         -   uses: actions/upload-artifact@v4
@@ -131,10 +154,7 @@ jobs:
                 actions: create-comment
                 token: ${{ secrets.GITHUB_TOKEN }}
                 body: |
-                    Sorry, something went wrong.
-
-                    Make sure that the PR number is present in issue title
-                    and really exists.
+                    Sorry, something went wrong when running mypy.
 
     diff:
         runs-on: ubuntu-latest
@@ -197,7 +217,4 @@ jobs:
                 actions: create-comment
                 token: ${{ secrets.GITHUB_TOKEN }}
                 body: |
-                    Sorry, something went wrong.
-
-                    Make sure that the PR number is present in issue title
-                    and really exists.
+                    Sorry, something went wrong during diff generation.
