@@ -20,8 +20,6 @@ permissions:
 jobs:
     fetch:
         runs-on: ubuntu-latest
-        permissions:
-            issues: read
         steps:
         -   uses: actions/cache/restore@v4
             id: restore-issues
@@ -62,6 +60,8 @@ jobs:
 
     apply:
         runs-on: ubuntu-latest
+        permissions:
+            issues: write
         needs: [fetch]
         strategy:
             matrix:
@@ -124,6 +124,18 @@ jobs:
                 name: results-${{ matrix.side }}
                 path: outputs/
 
+        -   name: Report failure
+            if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
+            uses: actions-cool/issues-helper@v3
+            with:
+                actions: create-comment
+                token: ${{ secrets.GITHUB_TOKEN }}
+                body: |
+                    Sorry, something went wrong.
+
+                    Make sure that the PR number is present in issue title
+                    and really exists.
+
     diff:
         runs-on: ubuntu-latest
         needs: [apply]
@@ -166,7 +178,7 @@ jobs:
                 GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
 
         -   name: Post results
-            if: github.event_name == 'issues'
+            if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
             uses: actions-cool/issues-helper@v3
             with:
                 actions: create-comment
@@ -178,10 +190,14 @@ jobs:
                     ${{ steps.compare.outputs.diff-text }}
                     ```
 
-        -   name: Close issue
-            if: github.event_name == 'issues'
+        -   name: Report failure
+            if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
             uses: actions-cool/issues-helper@v3
             with:
-                actions: close-issue
+                actions: create-comment
                 token: ${{ secrets.GITHUB_TOKEN }}
-                close-reason: completed
+                body: |
+                    Sorry, something went wrong.
+
+                    Make sure that the PR number is present in issue title
+                    and really exists.

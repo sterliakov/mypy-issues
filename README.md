@@ -1,5 +1,14 @@
 Compare `mypy` output on valid snippets from `mypy` issues.
 
+## Online usage
+
+To run against a PR, simply create an issue with PR number in title and wait
+approx. 15 minutes for results to arrive in comments.
+
+Comment on the issue to run again (e.g. if upstream PR was updated).
+
+Issues will be closed after 14 days of inactivity.
+
 ## Prerequisites
 
 * Linux (this may or may not work on other OSes or under WSL)
