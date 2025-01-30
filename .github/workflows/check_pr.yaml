@@ -11,6 +11,8 @@ on:
         -   opened
         -   edited
         -   reopened
+    issue_comment:
+        types: [created]
 
 permissions:
     contents: read
@@ -85,7 +87,7 @@ jobs:
 
         -   name: Get Issue
             id: get-issue
-            if: github.event_name == 'issues'
+            if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
             uses: actions-cool/issues-helper@v3
             with:
                 actions: get-issue
@@ -157,7 +159,7 @@ jobs:
                 uv run diff --no-snippets --diff-originals | tee out.txt
                 {
                     echo 'diff-text<<EOF';
-                    cat out.txt;
+                    sed -e 's/\x1b\[1;3.m//g' -e 's/\x1b\[0m//g' out.txt;
                     echo 'EOF';
                 } >> "$GITHUB_OUTPUT"
             env:
@@ -172,7 +174,9 @@ jobs:
                 body: |
                     Results are ready!
 
+                    ```diff
                     ${{ steps.compare.outputs.diff-text }}
+                    ```
 
         -   name: Close issue
             if: github.event_name == 'issues'
