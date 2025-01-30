@@ -1,4 +1,4 @@
-name: Sync issues
+name: Close old issues
 
 on:
     workflow_dispatch:
