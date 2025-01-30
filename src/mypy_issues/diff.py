@@ -236,17 +236,13 @@ def diff_one(prefix: str, *, diff_originals: bool = False) -> list[tuple[str, st
         if diff_originals:
             if _normalize(right_out) != _normalize(left_out):
                 diff_iter = difflib.unified_diff(
-                    _normalize(right_out),
-                    _normalize(left_out),
-                    lineterm="",
+                    right_out.splitlines(), left_out.splitlines(), lineterm=""
                 )
             else:
                 diff_iter = iter([])
         else:
             diff_iter = difflib.unified_diff(
-                _normalize(right_out),
-                _normalize(left_out),
-                lineterm="",
+                _normalize(right_out), _normalize(left_out), lineterm=""
             )
         diff = list(diff_iter)[2:]  # Remove ---/+++ header
 
