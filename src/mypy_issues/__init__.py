@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
@@ -25,7 +26,7 @@ def fetch_issues() -> None:
     token = _get_gh_token()
 
     ISSUES_LOGGER.setLevel(logging.DEBUG if args.verbose else logging.INFO)
-    download_snippets(token, limit=args.limit)
+    asyncio.run(download_snippets(token, limit=args.limit))
 
 
 def run_mypy() -> None:

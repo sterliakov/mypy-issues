@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import difflib
-import json
 import os
 import re
 import sys
@@ -12,17 +11,17 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import ClassVar, Final, TextIO
 
-from githubkit.versions.latest.models import Issue
 from pygments import highlight
 from pygments.formatters import TerminalTrueColorFormatter
 from pygments.lexers import PythonLexer
 
 from .config import (
-    ISSUES_FILE,
     LEFT_OUTPUTS,
     RIGHT_OUTPUTS,
     RUN_OUTPUTS_ROOT,
     SNIPPETS_ROOT,
+    IssueWithComments,
+    load_issues,
 )
 
 
@@ -36,8 +35,7 @@ def diff(
         _, iss, _ = filename.split("_", 2)
         return int(iss)
 
-    with ISSUES_FILE.open() as fd:
-        issues = {int(n): Issue.model_validate(iss) for n, iss in json.load(fd).items()}
+    issues = load_issues()
 
     printer_cls = InteractivePrinter if interactive else NonInteractivePrinter
     printer = printer_cls(issues, print_snippets=print_snippets)
@@ -68,7 +66,7 @@ class NonInteractivePrinter(Printer):
     sep_width: ClassVar[int] = 80
 
     def __init__(
-        self, issues: dict[int, Issue], *, print_snippets: bool = True
+        self, issues: dict[int, IssueWithComments], *, print_snippets: bool = True
     ) -> None:
         super().__init__()
         self.issues = issues
@@ -77,10 +75,10 @@ class NonInteractivePrinter(Printer):
     def print_issue(self, diffs: list[tuple[str, str]], issue_number: int) -> None:
         super().print_issue(diffs, issue_number)
         print("=" * self.sep_width)
-        print(f"#{issue_number}: {self.issues[issue_number].title}")
+        print(f"#{issue_number}: {self.issues[issue_number].issue.title}")
         labels = ", ".join(
             lb if isinstance(lb, str) else (lb.name or "")
-            for lb in self.issues[issue_number].labels
+            for lb in self.issues[issue_number].issue.labels
         )
         print(f"Labels: {labels}")
         for d, snip in diffs:
@@ -107,7 +105,7 @@ class InteractivePrinter(NonInteractivePrinter):
     }
 
     def __init__(
-        self, issues: dict[int, Issue], *, print_snippets: bool = True
+        self, issues: dict[int, IssueWithComments], *, print_snippets: bool = True
     ) -> None:
         super().__init__(issues, print_snippets=print_snippets)
         self.skip: set[int] = set()
@@ -143,11 +141,19 @@ class InteractivePrinter(NonInteractivePrinter):
             return
         print("\033[H\033[J", end="")
         super().print_issue(diffs, issue_number)
+        contexts_printed = 0
         while True:
             self._print_prompt()
             ch = self.getchar().lower()
             if ch == "c":
-                self.print_context(issue_number)
+                if contexts_printed == 0:
+                    self.print_context(issue_number)
+                    contexts_printed = 1
+                elif contexts_printed == 1:
+                    self.print_comments(issue_number)
+                    contexts_printed = 2
+                else:
+                    print("No more context for you today:(")
             elif ch == "n":
                 message = input("\nEnter your comment: ")
                 with self.files[ch].open("a") as fd:
@@ -159,12 +165,21 @@ class InteractivePrinter(NonInteractivePrinter):
                 break
 
     def _print_prompt(self) -> None:
-        print("f=fixed | b=better | w=worse | s=same | n=note | c=context: ")
+        print(
+            "f=fixed | b=better | w=worse | s=same | n=note | c=context (again for comments): "
+        )
         print("How's this (don't press Enter)? [fbwsinc] ")
 
     def print_context(self, issue_number: int) -> None:
         print("~" * self.sep_width)
-        print(self.issues[issue_number].body)
+        print(self.issues[issue_number].issue.body)
+        print("~" * self.sep_width)
+
+    def print_comments(self, issue_number: int) -> None:
+        print("~" * self.sep_width)
+        for com in self.issues[issue_number].comments:
+            print("~" * self.sep_width)
+            print(com.body)
         print("~" * self.sep_width)
 
     @contextlib.contextmanager

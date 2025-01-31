@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
@@ -18,11 +17,11 @@ from typing import Final, Literal, TypeAlias
 from tqdm import trange
 
 from mypy_issues.config import (
-    INVENTORY_FILE,
     LEFT_OUTPUTS,
     RIGHT_OUTPUTS,
     SNIPPETS_ROOT,
     InventoryItem,
+    load_inventory,
 )
 
 LOG = logging.getLogger("apply")
@@ -63,8 +62,7 @@ def run_apply(
     right_origin: str = "pypi",
     old_strategy: OldStrategy = "skip",
 ) -> None:
-    with INVENTORY_FILE.open() as fd:
-        inventory = json.load(fd)
+    inventory = load_inventory()
 
     if right_rev is None:
         _setup_copy_from_source("master")  # To have tags available

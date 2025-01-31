@@ -22,8 +22,8 @@ Issues will be closed after 14 days of inactivity.
 
 ```bash
 export GH_ACCESS_TOKEN="github_pat_xxxxx...x"
-# Fetch GitHub issues database. ~1 min on my PC.
-# Starts from scratch if rerun.
+# Fetch GitHub issues database. ~15 min on my PC.
+# Performs incremental update if the inventory file already exists.
 uv run fetch
 # Run `mypy` on the acquired snippets. ~15 mins per version
 # on my 4 cores, 30 mins in total.
