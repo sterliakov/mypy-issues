@@ -5,7 +5,7 @@ import logging
 import re
 import subprocess
 import sys
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Final, NamedTuple, ParamSpec, Protocol, TypeVar
 
@@ -55,7 +55,6 @@ async def download_snippets(
     # Github API will sometimes hang for a long time to fail with timeout.
     # Set smaller timeout and retry.
     gh = GitHub(token, timeout=2)
-    event = asyncio.Event()
     inventory: list[InventoryItem] = []
     issues: dict[int, IssueWithComments] = {}
     seen: set[str] = set()
@@ -74,21 +73,28 @@ async def download_snippets(
         inventory, issues = _incremental_update(inventory, issues, removed)
         seen = {snip["filename"] for snip in inventory}
 
-    async for plain_issue in _get_issues(gh, event, org, repo, since):
-        for snip, issue in await extract_snippets(plain_issue, gh=gh, event=event):
-            if snip.filename in seen:
-                continue
-            if store_snippet(snip):
-                inventory.append({
-                    "filename": snip.filename,
-                    "issue": issue.issue.number,
-                    "mypy_version": snip.mypy_version,
-                    "created_at": int(snip.date.timestamp()),
-                })
-                if len(inventory) == limit:
-                    event.set()
-                    break
-            issues[issue.issue.number] = issue
+    event = asyncio.Event()
+    async for batch in abatch(_get_issues(gh, event, org, repo, since), size=64):
+        blocks = await asyncio.gather(*[
+            extract_snippets(plain_issue, gh=gh, event=event) for plain_issue in batch
+        ])
+        for block in blocks:
+            for snip, issue in block:
+                if snip.filename in seen:
+                    continue
+                if store_snippet(snip):
+                    inventory.append({
+                        "filename": snip.filename,
+                        "issue": issue.issue.number,
+                        "mypy_version": snip.mypy_version,
+                        "created_at": int(snip.date.timestamp()),
+                    })
+                    if len(inventory) == limit:
+                        event.set()
+                        break
+                issues[issue.issue.number] = issue
+            if len(inventory) == limit:
+                break
         if len(inventory) == limit:
             break
     LOG.info("Stored %s snippets to %s.", len(inventory), SNIPPETS_ROOT)
@@ -124,22 +130,6 @@ class Snippet(NamedTuple):
         return f"gh_{self.issue}_c{self.comment}_{self.id}.py"
 
 
-class _WithParsedData(Protocol[T_co]):
-    @property
-    def parsed_data(self) -> T_co: ...
-
-
-async def retry(
-    fn: Callable[P, Awaitable[_WithParsedData[T]]], *args: P.args, **kwargs: P.kwargs
-) -> T:
-    for i in range(RETRIES):
-        try:
-            return (await fn(*args, **kwargs)).parsed_data
-        except GitHubException:
-            LOG.warning("Request failed, retrying %d more times...", RETRIES - 1 - i)
-    raise RuntimeError(f"Request failed {RETRIES} times, aborting.")
-
-
 async def _get_issues(
     gh: GitHub[Any],
     event: asyncio.Event,
@@ -156,7 +146,7 @@ async def _get_issues(
             repo,
             state="open",
             sort="created",
-            direction="desc" if since is None else "asc",
+            direction="asc",
             since=since or UNSET,
             per_page=PAGE_SIZE,
             page=page,
@@ -273,7 +263,7 @@ async def extract_snippets(
             for i, snip in enumerate(await _extract_snippets(issue.body, gh))
         ]
     comments = []
-    if issue.comments > 0:
+    if issue.comments > 0 and not event.is_set():
         comments = [com async for com in _get_comments_for_issue(issue, gh) if com.body]
         snippets = await asyncio.gather(*[
             _extract_snippets(com.body or "", gh) for com in comments
@@ -379,3 +369,30 @@ def store_snippet(snip: Snippet) -> bool:
             dest.write_text("from typing import *  # Added by us\n" + snip.body)
     LOG.debug("Added snippet %s.", dest.name)
     return True
+
+
+async def abatch(aiterable: AsyncIterable[T], size: int) -> AsyncIterable[list[T]]:
+    batch = []
+    async for element in aiterable:
+        batch.append(element)
+        if len(batch) == size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+class _WithParsedData(Protocol[T_co]):
+    @property
+    def parsed_data(self) -> T_co: ...
+
+
+async def retry(
+    fn: Callable[P, Awaitable[_WithParsedData[T]]], *args: P.args, **kwargs: P.kwargs
+) -> T:
+    for i in range(RETRIES):
+        try:
+            return (await fn(*args, **kwargs)).parsed_data
+        except GitHubException:
+            LOG.warning("Request failed, retrying %d more times...", RETRIES - 1 - i)
+    raise RuntimeError(f"Request failed {RETRIES} times, aborting.")

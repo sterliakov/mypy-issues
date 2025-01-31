@@ -3,7 +3,7 @@ Compare `mypy` output on valid snippets from `mypy` issues.
 ## Online usage
 
 To run against a PR, simply create an issue with PR number in title
-(e.g. "Check #12345") and wait approx. 15 minutes for results to arrive
+(e.g. "Check #12345") and wait approx. 25 minutes for results to arrive
 in comments.
 
 Comment on the issue to run again (e.g. if upstream PR was updated).
@@ -22,11 +22,11 @@ Issues will be closed after 14 days of inactivity.
 
 ```bash
 export GH_ACCESS_TOKEN="github_pat_xxxxx...x"
-# Fetch GitHub issues database. ~15 min on my PC.
+# Fetch GitHub issues database. ~8 min on my PC.
 # Performs incremental update if the inventory file already exists.
 uv run fetch
-# Run `mypy` on the acquired snippets. ~15 mins per version
-# on my 4 cores, 30 mins in total.
+# Run `mypy` on the acquired snippets. ~25 mins per version
+# on my 4 cores, 50 mins in total.
 uv run run
 # Normalize and compare outputs.
 # Beware: diffs you see may differ from real `mypy` output,
