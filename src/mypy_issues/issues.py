@@ -250,6 +250,7 @@ async def extract_snippets(
         return []
     result: list[Snippet] = []
     version = _extract_mypy_version(issue.body) if issue.body else None
+    seen_snippets = {""}  # Ignore empty
     if issue.body:
         result += [
             Snippet(
@@ -260,13 +261,15 @@ async def extract_snippets(
                 body=snip,
                 mypy_version=version,
             )
-            for i, snip in enumerate(await _extract_snippets(issue.body, gh))
+            for i, snip in enumerate(
+                await _extract_snippets(issue.body, gh, seen_snippets)
+            )
         ]
     comments = []
     if issue.comments > 0 and not event.is_set():
         comments = [com async for com in _get_comments_for_issue(issue, gh) if com.body]
         snippets = await asyncio.gather(*[
-            _extract_snippets(com.body or "", gh) for com in comments
+            _extract_snippets(com.body or "", gh, seen_snippets) for com in comments
         ])
         result += [
             Snippet(
@@ -283,10 +286,11 @@ async def extract_snippets(
     return [(b, IssueWithComments(issue, comments)) for b in result]
 
 
-async def _extract_snippets(text: str, gh: GitHub[Any]) -> list[str]:
+async def _extract_snippets(
+    text: str, gh: GitHub[Any], seen_snippets: set[str]
+) -> list[str]:
     result: list[str] = []
     md = MarkdownIt("gfm-like")
-    seen_snippets = set()
     for token in md.parse(text):
         if (
             token.type == "fence"
@@ -327,12 +331,20 @@ def _extract_mypy_version(body: str) -> str | None:
 
 
 def _is_relevant(code: str) -> bool:
-    return not code.startswith("$") and not re.search(
-        r"^[\w-]+\.py:\d+: (error|warning|note):", code
+    return (
+        not code.startswith("$")
+        and not re.search(r"^[\w-]+\.py:\d+: (error|warning|note):", code)
+        and not re.search(r"^\[(tool\.)?mypy\]", code)
     )
 
 
 def _normalize(snippet: str) -> str:
+    # strip comments (yes, this is invalid, should parse ast, but this is fast)
+    # we don't care if something goes wrong, we check orig snippets - this is only
+    # needed to reduce duplicates
+    snippet = re.sub(r"#.+\n", "\n", snippet)
+    # Strip trailing whitespace
+    snippet = re.sub(r"\s+\n", "\n", snippet)
     return re.sub(r"\n+", "\n", snippet.replace("\r", "")).strip()
 
 
