@@ -10,7 +10,7 @@ SNIPPETS_ROOT: Final = Path("./downloaded").resolve()
 INVENTORY_FILE: Final = SNIPPETS_ROOT / "inventory.json"
 ISSUES_FILE: Final = SNIPPETS_ROOT / "issues.json"
 
-RUN_OUTPUTS_ROOT: Final = Path("./outputs")
+RUN_OUTPUTS_ROOT: Final = Path("./outputs").resolve()
 LEFT_OUTPUTS: Final = RUN_OUTPUTS_ROOT / "left"
 RIGHT_OUTPUTS: Final = RUN_OUTPUTS_ROOT / "right"
 

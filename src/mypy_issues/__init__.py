@@ -61,6 +61,7 @@ def run_diff() -> None:
         interactive=args.interactive,
         print_snippets=not args.no_snippets,
         diff_originals=args.diff_originals,
+        ignore_notes=args.ignore_notes,
     )
 
 
@@ -140,7 +141,7 @@ def _make_diff_parser() -> argparse.ArgumentParser:
         "--interactive",
         action="store_true",
         dest="interactive",
-        help="Do not launch review TUI",
+        help="Launch review TUI",
     )
     parser.add_argument(
         "--no-snippets", action="store_true", help="Only print discovered output diffs"
@@ -149,6 +150,14 @@ def _make_diff_parser() -> argparse.ArgumentParser:
         "--diff-originals",
         action="store_true",
         help="Print diffs of unmodified outputs if normalized versions differ",
+    )
+    parser.add_argument(
+        "--ignore-notes",
+        action="store_true",
+        help=(
+            "Consider snippets with only 'note:' lines differing as equal"
+            " (does not affect reveal_type notes)"
+        ),
     )
     return parser
 

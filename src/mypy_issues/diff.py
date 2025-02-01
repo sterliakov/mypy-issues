@@ -9,6 +9,7 @@ import termios
 import tty
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
+from pathlib import Path
 from typing import ClassVar, Final, TextIO
 
 from pygments import highlight
@@ -30,6 +31,7 @@ def diff(
     interactive: bool = True,
     print_snippets: bool = True,
     diff_originals: bool = False,
+    ignore_notes: bool = False,
 ) -> None:
     def get_issue_no(filename: str) -> int:
         _, iss, _ = filename.split("_", 2)
@@ -40,9 +42,11 @@ def diff(
     printer_cls = InteractivePrinter if interactive else NonInteractivePrinter
     printer = printer_cls(issues, print_snippets=print_snippets)
     printer.setup()
-    names = {get_issue_no(f.name) for f in LEFT_OUTPUTS.iterdir()}
+    names = {get_issue_no(f.name) for f in LEFT_OUTPUTS.iterdir() if f.is_file()}
     for issue_no in sorted(names, reverse=True):
-        if diffs := diff_one(f"gh_{issue_no}", diff_originals=diff_originals):
+        if diffs := diff_one(
+            f"gh_{issue_no}", diff_originals=diff_originals, ignore_notes=ignore_notes
+        ):
             printer.print_issue(diffs, issue_no)
     printer.finalize()
 
@@ -134,7 +138,8 @@ class InteractivePrinter(NonInteractivePrinter):
         print("Review results written to:")
         for file in self.files.values():
             lines = len(file.read_text().splitlines())
-            print(f"{file.stem.title()}: {file.relative_to('.')} ({lines} issues)")
+            rel = file.relative_to(Path.cwd()).resolve()
+            print(f"{file.stem.title()}: {rel} ({lines} issues)")
 
     def print_issue(self, diffs: list[tuple[str, str]], issue_number: int) -> None:
         if issue_number in self.skip:
@@ -231,7 +236,9 @@ class InteractivePrinter(NonInteractivePrinter):
             return ch
 
 
-def diff_one(prefix: str, *, diff_originals: bool = False) -> list[tuple[str, str]]:
+def diff_one(
+    prefix: str, *, diff_originals: bool = False, ignore_notes: bool = False
+) -> list[tuple[str, str]]:
     left_files = list(LEFT_OUTPUTS.glob(f"{prefix}_*"))
     right_files = list(RIGHT_OUTPUTS.glob(f"{prefix}_*"))
     if not left_files or not right_files:
@@ -248,17 +255,17 @@ def diff_one(prefix: str, *, diff_originals: bool = False) -> list[tuple[str, st
             # mypy too old, something went wrong
             continue
         snips.append((SNIPPETS_ROOT / left.with_suffix(".py").name).read_text().strip())
+        right_norm = _normalize(right_out, ignore_notes=ignore_notes)
+        left_norm = _normalize(left_out, ignore_notes=ignore_notes)
         if diff_originals:
-            if _normalize(right_out) != _normalize(left_out):
+            if right_norm != left_norm:
                 diff_iter = difflib.unified_diff(
                     right_out.splitlines(), left_out.splitlines(), lineterm=""
                 )
             else:
                 diff_iter = iter([])
         else:
-            diff_iter = difflib.unified_diff(
-                _normalize(right_out), _normalize(left_out), lineterm=""
-            )
+            diff_iter = difflib.unified_diff(right_norm, left_norm, lineterm="")
         diff = list(diff_iter)[2:]  # Remove ---/+++ header
 
         outs.append("\n".join(map(colorize, diff)))
@@ -268,7 +275,7 @@ def diff_one(prefix: str, *, diff_originals: bool = False) -> list[tuple[str, st
     ]
 
 
-def _normalize(text: str) -> list[str]:
+def _normalize(text: str, *, ignore_notes: bool) -> list[str]:
     text = (
         text.replace("'", '"')
         .replace("<nothing>", "Never")
@@ -311,7 +318,7 @@ def _normalize(text: str) -> list[str]:
     lines = [
         _remove_code(line)
         for line in text.strip().splitlines()
-        if not _is_extra_note(line)
+        if not _is_extra_note(line, ignore_notes=ignore_notes)
     ]
     if lines and lines[-1].startswith(("Success: ", "Found ")):
         lines = lines[:-1]
@@ -326,12 +333,8 @@ def _normalize(text: str) -> list[str]:
     return sorted(lines, key=lambda line: (lineno(line), line))
 
 
-def _is_extra_note(line: str) -> bool:
-    return (
-        "Missing return statement" in line
-        or ("note:" in line and "note: Revealed type" not in line)
-        or "syntax error in type comment" in line
-    )
+def _is_extra_note(line: str, *, ignore_notes: bool) -> bool:
+    return ignore_notes and "note:" in line and "note: Revealed type" not in line
 
 
 def _remove_code(line: str) -> str:
