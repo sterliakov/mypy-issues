@@ -291,7 +291,7 @@ def _normalize(text: str, *, ignore_notes: bool) -> list[str]:
         )
     )
     text = re.sub(r"`-?\d+", "", text)
-    text = re.sub(r"(.)gh_\d+_\d+\.", r"\1", text)
+    text = re.sub(r"(.)gh_\d+_(?:body|c\d+)_\d+\.", r"\1", text)
     for typ in ["Type", "List", "Dict", "Set", "FrozenSet", "Tuple"]:
         text = re.sub(rf"\b{typ}\b", typ.lower(), text)
     text = text.replace("tuple[,", "tuple[(),")
