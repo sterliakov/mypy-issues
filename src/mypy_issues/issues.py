@@ -295,7 +295,7 @@ async def _extract_snippets(
         if (
             token.type == "fence"
             and token.tag == "code"
-            and token.info in {"", "py", "python", "python3"}
+            and token.info in {"", "py", "pyi", "python", "python3"}
             and _is_relevant(token.content)
         ):
             norm_body = _normalize(token.content)
@@ -304,7 +304,10 @@ async def _extract_snippets(
             seen_snippets.add(norm_body)
             result.append(token.content)
 
-    gist_ids = list(re.findall(r"https://mypy-play\.net/\?.+?gist=([\da-f]{32})", text))
+    gist_ids = [
+        *re.findall(r"https://mypy-play\.net/\?.+?gist=([\da-f]{32})", text),
+        *re.findall(r"https://gist\.github\.com/[\w-]+/([\da-f]{32})", text),
+    ]
     if not gist_ids:
         return result
     gists = await asyncio.gather(*[_get_gist(gist_id, gh) for gist_id in gist_ids])
