@@ -138,7 +138,6 @@ jobs:
                 uv run run \
                     --only-${{ matrix.side }} \
                     --pr "${PR}" \
-                    --run-imported \
                     --shard "${{ matrix.shard }}" \
                     --total-shards 2
             env:

@@ -129,7 +129,10 @@ def _make_apply_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--run-imported",
         action="store_true",
-        help="This should speed up things, but may fail with old versions. Good for PRs",
+        help=(
+            "This should speed up things, but may fail with old versions and (rarely)"
+            " affect some errors. I don't know why yet."
+        ),
     )
 
     parser.add_argument("--shard", type=int, default=0, help="Shard number (from 0)")
