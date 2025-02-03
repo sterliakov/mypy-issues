@@ -27,8 +27,8 @@ jobs:
         -   uses: actions/cache@v4
             with:
                 path: downloaded/
-                key: issues-dump-${{ github.run_id }}
-                restore-keys: issues-dump-
+                key: issues-dump-v2-${{ github.run_id }}
+                restore-keys: issues-dump-v2-
 
         -   name: Fetch issues
             run: |
