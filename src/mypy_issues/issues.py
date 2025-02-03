@@ -336,7 +336,10 @@ async def _extract_snippets(
     gists = await asyncio.gather(*[_get_gist(gist_id, gh) for gist_id in gist_ids])
     for gist in gists:
         assert isinstance(gist.files, GistSimplePropFiles)
-        (file,) = gist.files.model_dump().values()
+        files = list(gist.files.model_dump().values())
+        if len(files) != 1:
+            continue
+        (file,) = files
         norm_body = _normalize(file["content"])
         if norm_body in seen_snippets:
             continue
