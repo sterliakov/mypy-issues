@@ -70,8 +70,11 @@ def run_apply(
     right_origin: str = "pypi",
     old_strategy: OldStrategy = "skip",
     try_import: bool = False,
+    shard: int = 0,
+    total_shards: int = 1,
 ) -> None:
     inventory = load_inventory()
+    inventory = inventory[shard::total_shards]
 
     if right and right_rev is None:
         _setup_copy_from_source("master")  # To have tags available

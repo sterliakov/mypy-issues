@@ -53,6 +53,8 @@ def run_mypy() -> None:
         right_origin=args.right_origin,
         old_strategy=args.old_strategy,
         try_import=args.run_imported,
+        shard=args.shard,
+        total_shards=args.total_shards,
     )
 
 
@@ -128,6 +130,11 @@ def _make_apply_parser() -> argparse.ArgumentParser:
         "--run-imported",
         action="store_true",
         help="This should speed up things, but may fail with old versions. Good for PRs",
+    )
+
+    parser.add_argument("--shard", type=int, default=0, help="Shard number (from 0)")
+    parser.add_argument(
+        "--total-shards", type=int, default=1, help="Total amount of shards to use"
     )
     return parser
 

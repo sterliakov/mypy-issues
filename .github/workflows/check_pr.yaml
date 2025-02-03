@@ -90,7 +90,6 @@ jobs:
             if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
             with:
                 uv-venv: .venv
-                uv-version: 0.5.25
                 uv-cache: true
 
         -   name: Fetch issues
@@ -115,6 +114,7 @@ jobs:
         strategy:
             matrix:
                 side: [left, right]
+                shard: [0, 1]
 
         steps:
         -   uses: actions/checkout@v4
@@ -126,7 +126,6 @@ jobs:
         -   uses: yezz123/setup-uv@v4.1
             with:
                 uv-venv: .venv
-                uv-version: 0.5.25
                 uv-cache: true
 
         -   uses: actions/download-artifact@v4
@@ -136,7 +135,12 @@ jobs:
 
         -   name: Apply mypy
             run: |
-                uv run run --only-${{ matrix.side }} --pr "${PR}" --run-imported
+                uv run run \
+                    --only-${{ matrix.side }} \
+                    --pr "${PR}" \
+                    --run-imported \
+                    --shard "${{ matrix.shard }}" \
+                    --total-shards 2
             env:
                 GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
                 PR: ${{ needs.get-target.outputs.pr-number }}
@@ -144,7 +148,7 @@ jobs:
 
         -   uses: actions/upload-artifact@v4
             with:
-                name: results-${{ matrix.side }}
+                name: results-${{ matrix.shard }}-${{ matrix.side }}
                 path: outputs/
 
         -   name: Report failure
@@ -172,7 +176,6 @@ jobs:
         -   uses: yezz123/setup-uv@v4.1
             with:
                 uv-venv: .venv
-                uv-version: 0.5.25
                 uv-cache: true
 
         -   uses: actions/download-artifact@v4
