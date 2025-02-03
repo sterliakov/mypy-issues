@@ -279,6 +279,7 @@ def _normalize(text: str, *, ignore_notes: bool) -> list[str]:
     text = (
         text.replace("'", '"')
         .replace("<nothing>", "Never")
+        .replace("<typing special form>", "typing._SpecialForm")
         .replace("NoReturn", "Never")
         .replace('"Never"', "Never")
         .replace('"super()"', "super()")

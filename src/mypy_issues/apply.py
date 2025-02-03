@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import logging
 import os
 import shutil
+import signal
 import subprocess
+import sys
+import types
 from bisect import bisect_left
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from itertools import groupby
 from multiprocessing import Pool
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Final, Literal, TypeAlias
+from typing import Any, Final, Literal, TypeAlias
 
 from tqdm import trange
 
@@ -28,6 +32,8 @@ from mypy_issues.config import (
 LOG = logging.getLogger("apply")
 
 OldStrategy: TypeAlias = Literal["skip", "cap"]
+MypyMain: TypeAlias = Callable[[list[str]], tuple[str, str, int]]
+MypySpec: TypeAlias = tuple[Path | MypyMain, Path]
 
 LEFT: Final = Path("left_mypy")
 RIGHT: Final = Path("right_mypy")
@@ -37,6 +43,7 @@ UV: Final = "uv"
 
 MIN_SUPPORTED_MYPY: Final = (0, 800)
 DEFAULT_PACKAGES: Final = ("attrs", "orjson")
+TIMEOUT: Final = 20
 
 MYPY_CONFIG: Final = """
 [mypy]
@@ -62,10 +69,11 @@ def run_apply(
     right_rev: str | None = None,
     right_origin: str = "pypi",
     old_strategy: OldStrategy = "skip",
+    try_import: bool = False,
 ) -> None:
     inventory = load_inventory()
 
-    if right_rev is None:
+    if right and right_rev is None:
         _setup_copy_from_source("master")  # To have tags available
         inventory = list(add_versions(inventory, old_strategy))
 
@@ -74,11 +82,11 @@ def run_apply(
 
     if left:
         LOG.info("Running left (current) mypy...")
-        run_left(inventory, left_rev, left_origin)
+        run_left(inventory, left_rev, left_origin, try_import=try_import)
         LOG.info("Running left (current) mypy done.")
     if right:
         LOG.info("Running right (referenced) mypy...")
-        run_right(inventory, right_rev, right_origin)
+        run_right(inventory, right_rev, right_origin, try_import=try_import)
         LOG.info("Running right (referenced) mypy done.")
 
 
@@ -144,15 +152,25 @@ def _get_releases() -> dict[datetime, str]:
     return date_to_tag
 
 
-def run_left(inventory: list[InventoryItem], rev: str, origin: str) -> None:
+def run_left(
+    inventory: list[InventoryItem], rev: str, origin: str, *, try_import: bool = False
+) -> None:
     if LEFT_OUTPUTS.is_dir():
         shutil.rmtree(LEFT_OUTPUTS)
     (LEFT_OUTPUTS / "crashes").mkdir(parents=True)
-    mypy = _setup_mypy(rev, origin)
-    run_on_files(mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS)
+    with _setup_mypy(rev, origin, try_import=try_import) as mypy:
+        run_on_files(
+            mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS
+        )
 
 
-def run_right(inventory: list[InventoryItem], rev: str | None, origin: str) -> None:
+def run_right(
+    inventory: list[InventoryItem],
+    rev: str | None,
+    origin: str,
+    *,
+    try_import: bool = False,
+) -> None:
     if RIGHT_OUTPUTS.is_dir():
         shutil.rmtree(RIGHT_OUTPUTS)
     (RIGHT_OUTPUTS / "crashes").mkdir(parents=True)
@@ -169,26 +187,27 @@ def run_right(inventory: list[InventoryItem], rev: str | None, origin: str) -> N
         for ver, files_ in groupby(sorted(inventory, key=get_ver), key=get_ver):
             files = list(files_)
             try:
-                mypy = _setup_mypy(".".join(map(str, ver)), origin)
+                with _setup_mypy(
+                    ".".join(map(str, ver)), origin, try_import=try_import
+                ) as mypy:
+                    run_on_files(
+                        mypy,
+                        [SNIPPETS_ROOT / f["filename"] for f in files],
+                        RIGHT_OUTPUTS,
+                    )
             except UnknownVersionError:
                 LOG.warning("Failed to switch to version %s", ver)
                 continue
-            else:
-                run_on_files(
-                    mypy,
-                    [SNIPPETS_ROOT / f["filename"] for f in files],
-                    RIGHT_OUTPUTS,
-                )
     elif rev is not None:
-        mypy = _setup_mypy(rev, origin)
-        run_on_files(
-            mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
-        )
+        with _setup_mypy(rev, origin, try_import=try_import) as mypy:
+            run_on_files(
+                mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
+            )
     else:
         raise RuntimeError("Only 'pypi' origin supported for 'guess' revision.")
 
 
-def run_on_files(mypy: Path, files: Sequence[Path], dest_root: Path) -> None:
+def run_on_files(mypy: MypySpec, files: Sequence[Path], dest_root: Path) -> None:
     with contextlib.chdir(SNIPPETS_ROOT), Pool() as pool, TemporaryDirectory() as tmp:
         task_iter = pool.imap_unordered(
             partial(run_on_file, mypy=mypy, dest_root=dest_root, temp_dir=tmp),
@@ -197,7 +216,7 @@ def run_on_files(mypy: Path, files: Sequence[Path], dest_root: Path) -> None:
         list(zip(trange(len(files)), task_iter, strict=True))
 
 
-def run_on_file(target: Path, mypy: Path, dest_root: Path, temp_dir: str) -> None:
+def run_on_file(target: Path, mypy: MypySpec, dest_root: Path, temp_dir: str) -> None:
     out, err = _run_on_file(mypy, target, temp_dir)
     if out == "SKIP":
         return
@@ -206,22 +225,31 @@ def run_on_file(target: Path, mypy: Path, dest_root: Path, temp_dir: str) -> Non
         (dest_root / "crashes" / f"{target.stem}.txt").write_text(err)
 
 
-def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> tuple[str, str | None]:
+def _run_on_file(mypy: MypySpec, target: Path, temp_dir: str) -> tuple[str, str | None]:
+    mypy_func, mypy_file = mypy
     # fmt: off
     args = [
         target.name,
         "--cache-dir", f"{temp_dir}/{os.getpid()}",
+        "--python-executable", str(mypy_file.with_name("python").absolute()),
         "--show-traceback",
         "--strict",
-        "--python-executable", str(mypy.with_name("python").absolute()),
+        "--allow-empty-bodies",
+        "--skip-cache-mtime-checks",
     ]
     # fmt: on
+    if isinstance(mypy_func, Path):
+        return _run_subprocess_on_file(mypy_func, args)
+    return _run_imported_on_file(mypy_func, args)
+
+
+def _run_subprocess_on_file(mypy: Path, args: list[str]) -> tuple[str, str | None]:
     try:
         res = subprocess.run(
             [str(mypy.absolute()), *args],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=TIMEOUT,
             check=False,
             cwd=SNIPPETS_ROOT,
         )
@@ -239,15 +267,66 @@ def _run_on_file(mypy: Path, target: Path, temp_dir: str) -> tuple[str, str | No
         return (text, None)
 
 
-def _setup_mypy(rev: str, origin: str) -> Path:
+def _run_imported_on_file(mypy: MypyMain, args: list[str]) -> tuple[str, str | None]:
+    class AlarmError(Exception):
+        pass
+
+    def handle_alarm(_signum: int, _frame: types.FrameType | None) -> None:
+        raise AlarmError
+
+    signal.signal(signal.SIGALRM, handle_alarm)
+    iout = io.StringIO()
+    ierr = io.StringIO()
+    signal.alarm(TIMEOUT)
+    try:
+        with contextlib.redirect_stdout(iout), contextlib.redirect_stderr(ierr):
+            out, err, _ = mypy(args)
+    except Exception:  # noqa: BLE001
+        return _classify_output(ierr.getvalue())
+    else:
+        out += iout.getvalue()
+        err += ierr.getvalue()
+        text = out + err
+        return _classify_output(text)
+    finally:
+        signal.alarm(0)
+
+
+def _classify_output(text: str, *, force_error: bool = False) -> tuple[str, str | None]:
+    if "AlarmError" in text:
+        return ("TIMEOUT", "TIMEOUT")
+    if (
+        "error: invalid syntax" in text
+        or "'ASTConverter' object has no attribute 'visit_" in text
+    ):
+        return ("SKIP", None)
+    if force_error or not text or "Traceback (most recent call last)" in text:
+        return ("CRASH", text or "Please rerun manually")
+    return (text, None)
+
+
+@contextlib.contextmanager
+def _setup_mypy(
+    rev: str, origin: str, *, try_import: bool = False
+) -> Iterator[MypySpec]:
+    mypy = None
     if origin == "pypi" and (parts := _parse_semver(rev)) is not None:
         # Prefer PyPI installs
         try:
-            return _setup_copy_from_pypi(".".join(map(str, parts)))
+            mypy = _setup_copy_from_pypi(".".join(map(str, parts)))
         except UnknownVersionError:
             LOG.info("Failed to install mypy '%s' from PyPI, trying git...", rev)
 
-    return _setup_copy_from_source(rev, origin if origin != "pypi" else "python/mypy")
+    if mypy is None:
+        mypy = _setup_copy_from_source(
+            rev, origin if origin != "pypi" else "python/mypy"
+        )
+
+    if try_import:
+        with _maybe_import_mypy(mypy) as runner:
+            yield (runner, mypy)
+    else:
+        yield (mypy, mypy)
 
 
 def _setup_copy_from_source(rev: str = "master", origin: str = "python/mypy") -> Path:
@@ -275,7 +354,9 @@ def _setup_copy_from_source_with_python(rev: str, origin: str, python: str) -> P
         )
     if not (dest / venv).is_dir():
         _call_uv(["venv", venv, "--python", python], wd)
-        _call_uv(["pip", "install", *DEFAULT_PACKAGES], wd)
+        _call_uv(
+            ["pip", "install", "--python", f"{venv}/bin/python", *DEFAULT_PACKAGES], wd
+        )
 
     remotes = {
         r.split("\t")[0]
@@ -380,3 +461,71 @@ def _parse_semver(ver: str | None) -> tuple[int, int] | tuple[int, int, int] | N
             return (1, int(minor), int(patch))
         case _:
             return None
+
+
+@contextlib.contextmanager
+def _maybe_import_mypy(mypy: Path) -> Iterator[MypyMain | Path]:
+    ref_python = (
+        subprocess.check_output(
+            [str(mypy.with_name("python").absolute()), "-V"], text=True
+        )
+        .strip()
+        .removeprefix("Python ")
+    )
+    our_python = ".".join(map(str, sys.version_info[:3]))
+    if ref_python != our_python:
+        LOG.warning(
+            "Using different interpreter ('%s' vs '%s'), falling back to subprocess.",
+            ref_python,
+            our_python,
+        )
+        yield mypy
+        return
+
+    path = subprocess.check_output(
+        [
+            str(mypy.with_name("python").absolute()),
+            "-c",
+            "print(':'.join(__import__('sys').path))",
+        ],
+        text=True,
+    ).strip()
+
+    sys.modules.pop("mypy", None)
+    for k in list(sys.modules):
+        if k.startswith("mypy."):
+            del sys.modules[k]
+    old_path = sys.path
+    sys.path[:] = path.split(":")
+
+    try:
+        from mypy.api import run
+    except ImportError:
+        LOG.warning("Failed to import mypy, falling back to subprocess", exc_info=True)
+        yield mypy
+    else:
+        try:
+            yield run
+        finally:
+            sys.path[:] = old_path
+
+
+def _patch_fscache() -> None:
+    """This is noticeably faster, but somehow changes output on a few issues."""
+    from mypy import build
+
+    old_load = build._load_json_file  # noqa: SLF001
+    global_read_cache: dict[int, dict[str, Any]] = {}
+
+    def _load_json_file(
+        file: str, manager: build.BuildManager, log_success: str, log_error: str
+    ) -> dict[str, Any] | None:
+        cache = global_read_cache.setdefault(os.getpid(), {})
+        if file in cache:
+            return cache[file]
+        res = old_load(file, manager, log_success, log_error)
+        if res is not None:
+            cache[file] = res
+        return res
+
+    build._load_json_file = _load_json_file  # noqa: SLF001

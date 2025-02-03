@@ -70,6 +70,8 @@ async def download_snippets(
     issues: dict[int, IssueWithComments] = {}
     seen: set[str] = set()
     since = None
+    removed: set[int] = set()
+    old_issue_count = 0
     if INVENTORY_FILE.is_file() and ISSUES_FILE.is_file():
         inventory = load_inventory()
         issues = load_issues()
@@ -78,13 +80,16 @@ async def download_snippets(
             default=datetime.fromtimestamp(0, tz=UTC),
         )
         removed = {iss.number async for iss in _get_closed_issues(gh, org, repo, since)}
+        LOG.info("Removed %d issues from catalogue.", len(removed))
         comments = await _get_comments(gh, org, repo, since)
         # Just sync issues with new comments from scratch, that should be cheap.
         removed.update(comments.keys())
         inventory, issues = _incremental_update(inventory, issues, removed)
+        old_issue_count = len(issues)
         seen = {snip["filename"] for snip in inventory}
 
     event = asyncio.Event()
+    new_issues: set[int] = set()
     async for batch in abatch(_get_issues(gh, event, org, repo, since), size=64):
         blocks = await asyncio.gather(*[
             extract_snippets(plain_issue, gh=gh, event=event) for plain_issue in batch
@@ -104,11 +109,20 @@ async def download_snippets(
                         event.set()
                         break
                 issues[issue.issue.number] = issue
+                new_issues.add(issue.issue.number)
             if len(inventory) == limit:
                 break
         if len(inventory) == limit:
             break
-    LOG.info("Stored %s snippets to %s.", len(inventory), SNIPPETS_ROOT)
+
+    added_count = len(issues) - old_issue_count
+    LOG.info(
+        "Added %d issues, removed %d issues, refreshed %d issues.",
+        added_count,
+        len(removed),
+        len(new_issues) - added_count,
+    )
+    LOG.info("Now %d snippets in %s.", len(inventory), SNIPPETS_ROOT)
     save_inventory(inventory)
     save_issues(issues)
 

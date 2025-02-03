@@ -52,6 +52,7 @@ def run_mypy() -> None:
         right_rev=None if args.right_rev == "guess" else args.right_rev,
         right_origin=args.right_origin,
         old_strategy=args.old_strategy,
+        try_import=args.run_imported,
     )
 
 
@@ -122,6 +123,11 @@ def _make_apply_parser() -> argparse.ArgumentParser:
         default="skip",
         choices=["skip", "cap"],
         help='If "cap", run with newer mypy than guessed if the guessed version is too old',
+    )
+    parser.add_argument(
+        "--run-imported",
+        action="store_true",
+        help="This should speed up things, but may fail with old versions. Good for PRs",
     )
     return parser
 
