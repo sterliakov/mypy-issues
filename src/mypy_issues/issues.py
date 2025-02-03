@@ -7,10 +7,11 @@ import subprocess
 import sys
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, Final, NamedTuple, ParamSpec, Protocol, TypeVar
+from typing import Any, Final, NamedTuple, ParamSpec, Protocol, TypeVar, Union
 
 from githubkit import GitHub
 from githubkit.exception import GitHubException
+from githubkit.typing import UnsetType
 from githubkit.utils import UNSET
 from githubkit.versions.latest.models import (
     GistSimple,
@@ -41,6 +42,16 @@ RETRIES: Final = 5
 P = ParamSpec("P")
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
+
+
+def _patch_issue_model() -> None:
+    # This broke after update today.
+    # https://github.com/sterliakov/mypy-issues/actions/runs/13100571335/job/36549132079#step:6:50
+    Issue.model_fields["state_reason"].annotation = Union[str, UnsetType, None]  # type: ignore[assignment]  # noqa: UP007
+    Issue.model_rebuild(force=True)
+
+
+_patch_issue_model()
 
 
 async def download_snippets(
