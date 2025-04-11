@@ -1,68 +1,66 @@
 repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-    -   id: check-added-large-files
-    -   id: trailing-whitespace
-    -   id: end-of-file-fixer
-    -   id: check-merge-conflict
-    -   id: check-executables-have-shebangs
-    -   id: check-shebang-scripts-are-executable
-    -   id: check-symlinks
-    -   id: mixed-line-ending
+      - id: check-added-large-files
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: mixed-line-ending
         args: [--fix=lf]
-    -   id: check-toml
-    -   id: check-yaml
-    -   id: check-json
-    -   id: pretty-format-json
+      - id: check-toml
+      - id: check-yaml
+      - id: check-json
+      - id: pretty-format-json
         args: [--autofix, --indent, '4']
 
 
--   repo: https://github.com/astral-sh/ruff-pre-commit
+  - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.5
     hooks:
-    -   id: ruff-format
-        exclude: stubs
-    -   id: ruff
+      - id: ruff-format
+      - id: ruff
         args: [--fix]
-        exclude: migrations
 
--   repo: https://github.com/astral-sh/uv-pre-commit
+  - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.6.14
     hooks:
-    -   id: uv-lock
+      - id: uv-lock
 
--   repo: https://github.com/shellcheck-py/shellcheck-py   # Shellcheck
+  - repo: https://github.com/shellcheck-py/shellcheck-py   # Shellcheck
     rev: v0.10.0.1
     hooks:
-    -   id: shellcheck
+      - id: shellcheck
         args: [-x, -P, SCRIPTDIR]
--   repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
     rev: v2.14.0
     hooks:
-    -   id: pretty-format-yaml
-        args: [--autofix, --indent, '4']
-    -   id: pretty-format-toml
+      - id: pretty-format-yaml
+        args: [--autofix, --indent, '2', --offset, '2']
+      - id: pretty-format-toml
         args: [--autofix, --indent, '4', --trailing-comma]
 
--   repo: https://github.com/python-jsonschema/check-jsonschema
+  - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.32.1
     hooks:
-    -   id: check-github-workflows
--   repo: https://github.com/rhysd/actionlint
+      - id: check-github-workflows
+  - repo: https://github.com/rhysd/actionlint
     rev: v1.7.7
     hooks:
-    -   id: actionlint
+      - id: actionlint
         additional_dependencies:
-        -   github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.10.0
--   repo: https://github.com/woodruffw/zizmor-pre-commit
+          - github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.10.0
+  - repo: https://github.com/woodruffw/zizmor-pre-commit
     rev: v1.5.2
     hooks:
-    -   id: zizmor
+      - id: zizmor
 
--   repo: local
+  - repo: local
     hooks:
-    -   id: mypy
+      - id: mypy
         name: mypy
         entry: ./.venv/bin/mypy src/mypy_issues/ --config-file pyproject.toml
         pass_filenames: false

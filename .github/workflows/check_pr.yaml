@@ -1,222 +1,222 @@
 name: Find PR diffs
 
 on:
-    workflow_dispatch:
-        inputs:
-            pr:
-                type: number
-                description: PR to check
-    issues:
-        types: [opened]
-    issue_comment:
-        types: [created]
+  workflow_dispatch:
+    inputs:
+      pr:
+        type: number
+        description: PR to check
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
 
 permissions:
-    contents: read
+  contents: read
 
 jobs:
-    get-target:
-        runs-on: ubuntu-latest
-        permissions:
-            issues: write
-        outputs:
-            pr-number: ${{ steps.pr-number.outputs.pr }}
-        steps:
-        -   name: Get Issue
-            id: get-issue
-            if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
-            uses: actions-cool/issues-helper@v3
-            with:
-                actions: get-issue
-                token: ${{ secrets.GITHUB_TOKEN }}
+  get-target:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    outputs:
+      pr-number: ${{ steps.pr-number.outputs.pr }}
+    steps:
+      - name: Get Issue
+        id: get-issue
+        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: get-issue
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-        -   name: Get PR number to check
-            id: pr-number
-            run: |
-                if [ -z "${INPUT_PR}" ]; then
-                    pr=$(sed -E 's/.*#([[:digit:]]+).*/\1/g' <<<"${ISSUE_TITLE}")
-                else
-                    pr=${INPUT_PR}
-                fi
+      - name: Get PR number to check
+        id: pr-number
+        run: |
+          if [ -z "${INPUT_PR}" ]; then
+              pr=$(sed -E 's/.*#([[:digit:]]+).*/\1/g' <<<"${ISSUE_TITLE}")
+          else
+              pr=${INPUT_PR}
+          fi
 
-                re='^[0-9]+$'
-                if ! [[ "$pr" =~ $re ]]; then
-                    msg='No PR number found'
-                elif ! gh --repo python/mypy pr view "$pr"; then
-                    msg=$(printf "PR #%s not found in python/mypy" "$pr")
-                else
-                    echo "pr=${pr}" >> "$GITHUB_OUTPUT"
-                    exit 0
-                fi
-                printf "%s\n" "$msg" >&2
-                printf "msg=%s\n" "$msg" >> "$GITHUB_OUTPUT"
-                exit 1
-            env:
-                GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
-                INPUT_PR: ${{ inputs.pr }}
-                ISSUE_TITLE: ${{ steps.get-issue.outputs.issue-title }}
+          re='^[0-9]+$'
+          if ! [[ "$pr" =~ $re ]]; then
+              msg='No PR number found'
+          elif ! gh --repo python/mypy pr view "$pr"; then
+              msg=$(printf "PR #%s not found in python/mypy" "$pr")
+          else
+              echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+          printf "%s\n" "$msg" >&2
+          printf "msg=%s\n" "$msg" >> "$GITHUB_OUTPUT"
+          exit 1
+        env:
+          GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+          INPUT_PR: ${{ inputs.pr }}
+          ISSUE_TITLE: ${{ steps.get-issue.outputs.issue-title }}
 
-        -   name: Report failure
-            if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
-            uses: actions-cool/issues-helper@v3
-            with:
-                actions: create-comment
-                token: ${{ secrets.GITHUB_TOKEN }}
-                body: |
-                    ${{ steps.pr-number.outputs.msg }}
+      - name: Report failure
+        if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: create-comment
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            ${{ steps.pr-number.outputs.msg }}
 
-                    Comment with any text to retry (feel free to edit the title beforehand).
+            Comment with any text to retry (feel free to edit the title beforehand).
 
-    fetch:
-        runs-on: ubuntu-latest
-        steps:
-        -   uses: actions/cache/restore@v4
-            id: restore-issues
-            name: Restore cache
-            with:
-                path: downloaded/
-                key: issues-dump-v2-${{ github.run_id }}
-                restore-keys: issues-dump-v2-
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        id: restore-issues
+        name: Restore cache
+        with:
+          path: downloaded/
+          key: issues-dump-v2-${{ github.run_id }}
+          restore-keys: issues-dump-v2-
 
-        -   uses: actions/checkout@v4
-            if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
-            with:
-                persist-credentials: false
-        -   uses: actions/setup-python@v5
-            if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
-            with:
-                python-version: '3.13'
-        -   uses: yezz123/setup-uv@v4.1
-            if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
-            with:
-                uv-venv: .venv
-                uv-cache: true
+      - uses: actions/checkout@v4
+        if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
+        with:
+          python-version: '3.13'
+      - uses: yezz123/setup-uv@v4.1
+        if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
+        with:
+          uv-venv: .venv
+          uv-cache: true
 
-        -   name: Fetch issues
+      - name: Fetch issues
             # cache-hit is false for partial matches
-            if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
-            run: |
-                uv run fetch
-            env:
-                GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+        if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
+        run: |
+          uv run fetch
+        env:
+          GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
 
-        -   uses: actions/upload-artifact@v4
-            with:
-                name: issues-dump
-                path: downloaded/
-                retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issues-dump
+          path: downloaded/
+          retention-days: 1
 
-    apply:
-        runs-on: ubuntu-latest
-        permissions:
-            issues: write
-        needs: [get-target, fetch]
-        strategy:
-            matrix:
-                side: [left, right]
-                shard: [0, 1]
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    needs: [get-target, fetch]
+    strategy:
+      matrix:
+        side: [left, right]
+        shard: [0, 1]
 
-        steps:
-        -   uses: actions/checkout@v4
-            with:
-                persist-credentials: false
-        -   uses: actions/setup-python@v5
-            with:
-                python-version: '3.13'
-        -   uses: yezz123/setup-uv@v4.1
-            with:
-                uv-venv: .venv
-                uv-cache: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: yezz123/setup-uv@v4.1
+        with:
+          uv-venv: .venv
+          uv-cache: true
 
-        -   uses: actions/download-artifact@v4
-            with:
-                name: issues-dump
-                path: downloaded/
+      - uses: actions/download-artifact@v4
+        with:
+          name: issues-dump
+          path: downloaded/
 
-        -   name: Apply mypy
-            run: |
-                uv run run \
-                    --only-${{ matrix.side }} \
-                    --pr "${PR}" \
-                    --shard "${{ matrix.shard }}" \
-                    --total-shards 2
-            env:
-                GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
-                PR: ${{ needs.get-target.outputs.pr-number }}
-                TQDM_MININTERVAL: '5'
+      - name: Apply mypy
+        run: |
+          uv run run \
+              --only-${{ matrix.side }} \
+              --pr "${PR}" \
+              --shard "${{ matrix.shard }}" \
+              --total-shards 2
+        env:
+          GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+          PR: ${{ needs.get-target.outputs.pr-number }}
+          TQDM_MININTERVAL: '5'
 
-        -   uses: actions/upload-artifact@v4
-            with:
-                name: results-${{ matrix.shard }}-${{ matrix.side }}
-                path: outputs/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.shard }}-${{ matrix.side }}
+          path: outputs/
 
-        -   name: Report failure
-            if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
-            uses: actions-cool/issues-helper@v3
-            with:
-                actions: create-comment
-                token: ${{ secrets.GITHUB_TOKEN }}
-                body: |
-                    Sorry, something went wrong when running mypy.
+      - name: Report failure
+        if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: create-comment
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Sorry, something went wrong when running mypy.
 
-    diff:
-        runs-on: ubuntu-latest
-        needs: [apply]
-        permissions:
-            issues: write
+  diff:
+    runs-on: ubuntu-latest
+    needs: [apply]
+    permissions:
+      issues: write
 
-        steps:
-        -   uses: actions/checkout@v4
-            with:
-                persist-credentials: false
-        -   uses: actions/setup-python@v5
-            with:
-                python-version: '3.13'
-        -   uses: yezz123/setup-uv@v4.1
-            with:
-                uv-venv: .venv
-                uv-cache: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: yezz123/setup-uv@v4.1
+        with:
+          uv-venv: .venv
+          uv-cache: true
 
-        -   uses: actions/download-artifact@v4
-            with:
-                name: issues-dump
-                path: downloaded/
-        -   uses: actions/download-artifact@v4
-            with:
-                pattern: results-*
-                path: outputs/
-                merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: issues-dump
+          path: downloaded/
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          path: outputs/
+          merge-multiple: true
 
-        -   name: Compare outputs
-            id: compare
-            run: |
-                uv run diff --no-snippets --diff-originals | tee out.txt
-                {
-                    echo 'diff-text<<EOF';
-                    sed -e 's/\x1b\[1;3.m//g' -e 's/\x1b\[0m//g' out.txt;
-                    echo 'EOF';
-                } >> "$GITHUB_OUTPUT"
-            env:
-                GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+      - name: Compare outputs
+        id: compare
+        run: |
+          uv run diff --no-snippets --diff-originals | tee out.txt
+          {
+              echo 'diff-text<<EOF';
+              sed -e 's/\x1b\[1;3.m//g' -e 's/\x1b\[0m//g' out.txt;
+              echo 'EOF';
+          } >> "$GITHUB_OUTPUT"
+        env:
+          GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
 
-        -   name: Post results
-            if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
-            uses: actions-cool/issues-helper@v3
-            with:
-                actions: create-comment
-                token: ${{ secrets.GITHUB_TOKEN }}
-                body: |
-                    Results are ready!
+      - name: Post results
+        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: create-comment
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Results are ready!
 
-                    ```diff
-                    ${{ steps.compare.outputs.diff-text }}
-                    ```
+            ```diff
+            ${{ steps.compare.outputs.diff-text }}
+            ```
 
-        -   name: Report failure
-            if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
-            uses: actions-cool/issues-helper@v3
-            with:
-                actions: create-comment
-                token: ${{ secrets.GITHUB_TOKEN }}
-                body: |
-                    Sorry, something went wrong during diff generation.
+      - name: Report failure
+        if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: create-comment
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Sorry, something went wrong during diff generation.
