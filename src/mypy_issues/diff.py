@@ -10,7 +10,7 @@ import tty
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
-from typing import ClassVar, Final, TextIO
+from typing import ClassVar, Final, TextIO, cast
 
 from pygments import highlight
 from pygments.formatters import TerminalTrueColorFormatter
@@ -301,7 +301,10 @@ def _normalize(text: str, *, ignore_notes: bool) -> list[str]:
     text = re.sub(r"Optional\[(\w+?)\]", r"\1 | None", text)
     text = re.sub(r'"Optional\[(.+?)\]"', r'"\1 | None"', text)
     while "Union[" in text:
-        text = re.sub(r"Union\[(.+)", lambda m: _piped_union(m.group(1)), text)
+        # https://github.com/python/mypy/issues/18738
+        text = re.sub(
+            r"Union\[(.+)", lambda m: _piped_union(cast(str, m.group(1))), text
+        )
     for mod in [
         r'Skipping analyzing "(.+?)": found module but no type hints or library stubs',
         r'Skipping analyzing "(.+)": module is installed, but missing library stubs or py\.typed marker',
