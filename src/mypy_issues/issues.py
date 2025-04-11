@@ -14,6 +14,7 @@ from githubkit.exception import GitHubException
 from githubkit.typing import UnsetType
 from githubkit.utils import UNSET
 from githubkit.versions.latest.models import (
+    Commit,
     GistSimple,
     GistSimplePropFiles,
     Issue,
@@ -264,6 +265,13 @@ def get_pr(
 ) -> PullRequest:
     gh = GitHub(gh_token)
     return gh.rest.pulls.get(org, repo, pr_number).parsed_data
+
+
+def get_commit(
+    gh_token: str, commit_sha: str, *, org: str = "python", repo: str = "mypy"
+) -> Commit:
+    gh = GitHub(gh_token)
+    return gh.rest.repos.get_commit(org, repo, commit_sha).parsed_data
 
 
 async def extract_snippets(

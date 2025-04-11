@@ -14,6 +14,7 @@ from .diff import diff
 from .issues import (
     LOG as ISSUES_LOGGER,
     download_snippets,
+    get_commit,
     get_pr,
 )
 
@@ -135,10 +136,21 @@ def _make_apply_parser() -> argparse.ArgumentParser:
 
 def _update_apply_args_to_pr(args: argparse.Namespace, gh_token: str) -> None:
     pr = get_pr(gh_token, args.pr)
-    args.left_origin = pr.head.repo.full_name
-    args.left_rev = pr.head.sha
-    args.right_origin = pr.base.repo.full_name
-    args.right_rev = pr.base.sha
+    if pr.merged:
+        # Get a merge commit, compare to its parent. The branch may already be gone.
+        args.left_origin = pr.base.repo.full_name
+        args.left_rev = pr.merge_commit_sha
+
+        org, repo = pr.base.repo.full_name.split("/")
+        assert pr.merge_commit_sha is not None
+        merge_commit = get_commit(gh_token, pr.merge_commit_sha, org=org, repo=repo)
+        args.right_origin = pr.base.repo.full_name
+        args.right_rev = merge_commit.parents[0].sha
+    else:
+        args.left_origin = pr.head.repo.full_name
+        args.left_rev = pr.head.sha
+        args.right_origin = pr.base.repo.full_name
+        args.right_rev = pr.base.sha
 
 
 def _make_diff_parser() -> argparse.ArgumentParser:
