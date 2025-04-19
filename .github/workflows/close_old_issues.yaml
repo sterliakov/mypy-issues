@@ -20,3 +20,4 @@ jobs:
           actions: close-issues
           token: ${{ secrets.GITHUB_TOKEN }}
           inactive-day: 14
+          exclude-labels: immortal
