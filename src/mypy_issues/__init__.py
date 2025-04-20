@@ -147,6 +147,7 @@ def _update_apply_args_to_pr(args: argparse.Namespace, gh_token: str) -> None:
         args.right_origin = pr.base.repo.full_name
         args.right_rev = merge_commit.parents[0].sha
     else:
+        assert pr.head.repo is not None, "PR does not originate from a repo"
         args.left_origin = pr.head.repo.full_name
         args.left_rev = pr.head.sha
         args.right_origin = pr.base.repo.full_name
