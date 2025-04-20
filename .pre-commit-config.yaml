@@ -63,12 +63,3 @@ repos:
     rev: v1.6.0
     hooks:
       - id: zizmor
-
-  - repo: local
-    hooks:
-      - id: mypy
-        name: mypy
-        entry: ./.venv/bin/mypy src/mypy_issues/ --config-file pyproject.toml
-        pass_filenames: false
-        language: system
-        types_or: [python, toml]
