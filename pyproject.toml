@@ -66,20 +66,6 @@ detect-string-imports = true
 docstring-code-format = true
 
 [tool.ruff.lint]
-exclude = [
-    ".svn",
-    "CVS",
-    ".bzr",
-    ".hg",
-    ".git",
-    "__pycache__",
-    ".tox",
-    ".nox",
-    ".eggs",
-    "*.egg",
-    "migrations",
-    "manage.py",
-]
 extend-ignore = [
     "S101",  # Use of `assert` detected
     "EM102",  # Exception must not use an f-string literal, assign to variable first
