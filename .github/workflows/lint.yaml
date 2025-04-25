@@ -36,4 +36,4 @@ jobs:
       - name: install deps
         run: uv sync --no-install-project --dev
       - name: run mypy
-        run: mypy src/mypy_issues/ --config-file pyproject.toml
+        run: uv run mypy src/mypy_issues/ --config-file pyproject.toml
