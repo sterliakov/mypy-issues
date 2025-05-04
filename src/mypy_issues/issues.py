@@ -386,6 +386,7 @@ def store_snippet(snip: Snippet) -> bool:
                 str(dest.resolve()),
                 "--select", "F821",
                 "--output-format", "concise",
+                "--target-version", "py313",
             ],
             text=True,
             stderr=subprocess.STDOUT,
