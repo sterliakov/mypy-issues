@@ -2,6 +2,11 @@ name: Sync issues
 
 on:
   workflow_dispatch:
+    inputs:
+      since:
+        description: Cutoff date
+        required: false
+        default: detect
   schedule:
     - cron: 20 */4 * * *
 
@@ -27,6 +32,7 @@ jobs:
 
       - name: Fetch issues
         run: |
-          uv run fetch
+          uv run fetch --since "$CHECK_SINCE"
         env:
           GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+          CHECK_SINCE: ${{ inputs.since || 'detect' }}

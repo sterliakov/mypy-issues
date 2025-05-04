@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import sys
+from datetime import datetime
 
 from .apply import (
     LOG as APPLY_LOGGER,
@@ -27,7 +28,7 @@ def fetch_issues() -> None:
     token = _get_gh_token()
 
     ISSUES_LOGGER.setLevel(logging.DEBUG if args.verbose else logging.INFO)
-    asyncio.run(download_snippets(token, limit=args.limit))
+    asyncio.run(download_snippets(token, limit=args.limit, since=args.since))
 
 
 def run_mypy() -> None:
@@ -69,6 +70,14 @@ def run_diff() -> None:
 
 
 def _make_fetch_parser() -> argparse.ArgumentParser:
+    def parse_datetime_or_detect(val: str) -> datetime | None:
+        if val == "detect":
+            return None
+        try:
+            return datetime.fromisoformat(val)
+        except ValueError:
+            parser.error(f"Invalid datetime value: {val!r}")
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-v", "--verbose", action="store_true", dest="verbose", help="Print more output"
@@ -78,6 +87,12 @@ def _make_fetch_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Max amount of valid snippets to generate",
+    )
+    parser.add_argument(
+        "--since",
+        type=parse_datetime_or_detect,
+        default=None,
+        help="Force synchronization after this cutoff date, YYYY-MM-DD, or 'detect' to only update since last fetch.",
     )
     return parser
 

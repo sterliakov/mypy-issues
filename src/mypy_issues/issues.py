@@ -44,12 +44,13 @@ T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
 
 
-async def download_snippets(
+async def download_snippets(  # noqa: C901
     token: str,
     *,
     limit: int | None = None,
     org: str = "python",
     repo: str = "mypy",
+    since: datetime | None = None,
 ) -> None:
     SNIPPETS_ROOT.mkdir(exist_ok=True)
 
@@ -59,15 +60,15 @@ async def download_snippets(
     inventory: list[InventoryItem] = []
     issues: dict[int, IssueWithComments] = {}
     seen: set[str] = set()
-    since = None
     removed_count = 0
     if INVENTORY_FILE.is_file() and ISSUES_FILE.is_file():
         inventory = load_inventory()
         issues = load_issues()
-        since = max(
-            (iss.issue.created_at for iss in issues.values()),
-            default=datetime.fromtimestamp(0, tz=UTC),
-        )
+        if since is None:
+            since = max(
+                (iss.issue.created_at for iss in issues.values()),
+                default=datetime.fromtimestamp(0, tz=UTC),
+            )
         removed = {iss.number async for iss in _get_closed_issues(gh, org, repo, since)}
         removed_count = sum(n in issues for n in removed)
         comments = await _get_comments(gh, org, repo, since)
