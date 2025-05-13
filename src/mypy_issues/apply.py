@@ -146,17 +146,19 @@ def _get_releases() -> dict[datetime, str]:
 
 
 def run_right(inventory: list[InventoryItem], revision: MypyRevision) -> None:
-    if LEFT_OUTPUTS.is_dir():
-        shutil.rmtree(LEFT_OUTPUTS)
-    (LEFT_OUTPUTS / "crashes").mkdir(parents=True)
-    mypy = revision.setup()
-    run_on_files(mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS)
-
-
-def run_left(inventory: list[InventoryItem], revision: MypyRevision) -> None:
     if RIGHT_OUTPUTS.is_dir():
         shutil.rmtree(RIGHT_OUTPUTS)
     (RIGHT_OUTPUTS / "crashes").mkdir(parents=True)
+    mypy = revision.setup()
+    run_on_files(
+        mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
+    )
+
+
+def run_left(inventory: list[InventoryItem], revision: MypyRevision) -> None:
+    if LEFT_OUTPUTS.is_dir():
+        shutil.rmtree(LEFT_OUTPUTS)
+    (LEFT_OUTPUTS / "crashes").mkdir(parents=True)
 
     def get_ver(item: InventoryItem) -> tuple[int, int] | tuple[int, int, int]:
         ver = item["mypy_version"]
@@ -180,12 +182,12 @@ def run_left(inventory: list[InventoryItem], revision: MypyRevision) -> None:
             run_on_files(
                 mypy,
                 [SNIPPETS_ROOT / f["filename"] for f in files],
-                RIGHT_OUTPUTS,
+                LEFT_OUTPUTS,
             )
     else:
         mypy = revision.setup()
         run_on_files(
-            mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
+            mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS
         )
 
 
