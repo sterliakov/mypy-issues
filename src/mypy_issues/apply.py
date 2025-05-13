@@ -7,7 +7,7 @@ import os
 import shutil
 import subprocess
 from bisect import bisect_left
-from collections.abc import Container, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from itertools import groupby
@@ -356,9 +356,7 @@ class MypyRevision:
     def _remote_name(self, origin: str) -> str:
         return origin.replace("/", "__")
 
-    def _maybe_add_remote(
-        self, origin: str, found_remotes: Container[str], wd: Path
-    ) -> None:
+    def _maybe_add_remote(self, origin: str, found_remotes: set[str], wd: Path) -> None:
         remote_name = self._remote_name(origin)
         if remote_name not in found_remotes:
             subprocess.check_output(
@@ -366,6 +364,7 @@ class MypyRevision:
                 cwd=wd,
                 stderr=subprocess.STDOUT,
             )
+            found_remotes.add(remote_name)
 
     def setup_copy_from_pypi(self) -> Path:
         assert self.rev is not None
