@@ -338,6 +338,7 @@ class MypyRevision:
         if self.merge_with is not None:
             merge_branch, merge_origin = self.merge_with
             LOG.info("Merging %s of %r...", merge_branch, merge_origin)
+            _git_config_dummy(wd)
             subprocess.check_output(
                 [
                     GIT,
@@ -436,3 +437,12 @@ def _parse_semver(ver: str | None) -> tuple[int, int] | tuple[int, int, int] | N
                 return None
     except ValueError:
         return None
+
+
+def _git_config_dummy(wd: Path) -> None:
+    args = {
+        "name": "Never pushes",
+        "email": "does@not.exist",
+    }
+    for key, value in args.items():
+        subprocess.check_output([GIT, "config", f"user.{key}", value], cwd=wd)
