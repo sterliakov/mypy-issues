@@ -245,27 +245,29 @@ def diff_one(
         return []
     outs = []
     snips = []
-    for left in left_files:
-        right = RIGHT_OUTPUTS / left.name
-        if not right.is_file():
+    for right in right_files:
+        left = LEFT_OUTPUTS / right.name
+        if not left.is_file():
             continue
-        right_out = right.read_text()
         left_out = left.read_text()
-        if "syntax error in type comment" in right_out:
+        right_out = right.read_text()
+        if "syntax error in type comment" in left_out:
             # mypy too old, something went wrong
             continue
-        snips.append((SNIPPETS_ROOT / left.with_suffix(".py").name).read_text().strip())
-        right_norm = _normalize(right_out, ignore_notes=ignore_notes)
+        snips.append(
+            (SNIPPETS_ROOT / right.with_suffix(".py").name).read_text().strip()
+        )
         left_norm = _normalize(left_out, ignore_notes=ignore_notes)
+        right_norm = _normalize(right_out, ignore_notes=ignore_notes)
         if diff_originals:
-            if right_norm != left_norm:
+            if left_norm != right_norm:
                 diff_iter = difflib.unified_diff(
-                    right_out.splitlines(), left_out.splitlines(), lineterm=""
+                    left_out.splitlines(), right_out.splitlines(), lineterm=""
                 )
             else:
                 diff_iter = iter([])
         else:
-            diff_iter = difflib.unified_diff(right_norm, left_norm, lineterm="")
+            diff_iter = difflib.unified_diff(left_norm, right_norm, lineterm="")
         diff = list(diff_iter)[2:]  # Remove ---/+++ header
 
         outs.append("\n".join(map(colorize, diff)))

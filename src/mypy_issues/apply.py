@@ -6,7 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
-from bisect import bisect_left
+from bisect import bisect_right
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from functools import partial
@@ -66,7 +66,7 @@ def run_apply(
     inventory = load_inventory()
     inventory = inventory[shard::total_shards]
 
-    if right is not None and right.rev is None:
+    if left is not None and left.rev is None:
         MypyRevision("master").setup()
         inventory = list(add_versions(inventory, old_strategy))
 
@@ -74,13 +74,13 @@ def run_apply(
     (SNIPPETS_ROOT / "mypy.ini").write_text(MYPY_CONFIG)
 
     if left is not None:
-        LOG.info("Running left (current) mypy...")
+        LOG.info("Running left (referenced) mypy...")
         run_left(inventory, left)
-        LOG.info("Running left (current) mypy done.")
+        LOG.info("Running left (referenced) mypy done.")
     if right is not None:
-        LOG.info("Running right (referenced) mypy...")
+        LOG.info("Running right (current) mypy...")
         run_right(inventory, right)
-        LOG.info("Running right (referenced) mypy done.")
+        LOG.info("Running right (current) mypy done.")
 
 
 def add_versions(
@@ -103,7 +103,7 @@ def add_versions(
                 ver = None
 
         if ver in {None, "master"}:
-            latest_release_index = bisect_left(
+            latest_release_index = bisect_right(
                 dates, datetime.fromtimestamp(file["created_at"], tz=UTC)
             )
             if latest_release_index == len(dates):
@@ -145,18 +145,20 @@ def _get_releases() -> dict[datetime, str]:
     return date_to_tag
 
 
-def run_left(inventory: list[InventoryItem], revision: MypyRevision) -> None:
-    if LEFT_OUTPUTS.is_dir():
-        shutil.rmtree(LEFT_OUTPUTS)
-    (LEFT_OUTPUTS / "crashes").mkdir(parents=True)
-    mypy = revision.setup()
-    run_on_files(mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS)
-
-
 def run_right(inventory: list[InventoryItem], revision: MypyRevision) -> None:
     if RIGHT_OUTPUTS.is_dir():
         shutil.rmtree(RIGHT_OUTPUTS)
     (RIGHT_OUTPUTS / "crashes").mkdir(parents=True)
+    mypy = revision.setup()
+    run_on_files(
+        mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
+    )
+
+
+def run_left(inventory: list[InventoryItem], revision: MypyRevision) -> None:
+    if LEFT_OUTPUTS.is_dir():
+        shutil.rmtree(LEFT_OUTPUTS)
+    (LEFT_OUTPUTS / "crashes").mkdir(parents=True)
 
     def get_ver(item: InventoryItem) -> tuple[int, int] | tuple[int, int, int]:
         ver = item["mypy_version"]
@@ -180,12 +182,12 @@ def run_right(inventory: list[InventoryItem], revision: MypyRevision) -> None:
             run_on_files(
                 mypy,
                 [SNIPPETS_ROOT / f["filename"] for f in files],
-                RIGHT_OUTPUTS,
+                LEFT_OUTPUTS,
             )
     else:
         mypy = revision.setup()
         run_on_files(
-            mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], RIGHT_OUTPUTS
+            mypy, [SNIPPETS_ROOT / f["filename"] for f in inventory], LEFT_OUTPUTS
         )
 
 

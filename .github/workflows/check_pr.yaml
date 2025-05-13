@@ -6,6 +6,20 @@ on:
       pr:
         type: number
         description: PR to check
+      left_rev:
+        type: string
+        description: Left (old) revision
+      left_origin:
+        type: string
+        description: Left (old) revision
+        default: pypi
+      right_rev:
+        type: string
+        description: Right (new) revision
+      right_origin:
+        type: string
+        description: Right (new) revision
+        default: pypi
   issues:
     types: [opened]
   issue_comment:
@@ -32,6 +46,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get PR number to check
+        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' || inputs.pr != null }}
         id: pr-number
         run: |
           if [ -z "${INPUT_PR}" ]; then
@@ -127,7 +142,8 @@ jobs:
           name: issues-dump
           path: downloaded/
 
-      - name: Apply mypy
+      - name: Apply mypy (PR)
+        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' || inputs.pr != null }}
         run: |
           uv run run \
               --only-${{ matrix.side }} \
@@ -137,6 +153,25 @@ jobs:
         env:
           GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
           PR: ${{ needs.get-target.outputs.pr-number }}
+          TQDM_MININTERVAL: '5'
+
+      - name: Apply mypy (two versions)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.pr == null }}
+        run: |
+          uv run run \
+              --only-${{ matrix.side }} \
+              --left-rev "$LEFT_REV" \
+              --left-origin "$LEFT_ORIGIN" \
+              --right-rev "$RIGHT_REV" \
+              --right-origin "$RIGHT_ORIGIN" \
+              --shard "${{ matrix.shard }}" \
+              --total-shards 2
+        env:
+          GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+          LEFT_REV: ${{ inputs.left_rev }}
+          LEFT_ORIGIN: ${{ inputs.left_origin }}
+          RIGHT_REV: ${{ inputs.right_rev }}
+          RIGHT_ORIGIN: ${{ inputs.right_origin }}
           TQDM_MININTERVAL: '5'
 
       - uses: actions/upload-artifact@v4

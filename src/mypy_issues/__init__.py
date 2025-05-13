@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 
 from .apply import (
@@ -37,25 +38,23 @@ def run_mypy() -> None:
     args = parser.parse_args()
     APPLY_LOGGER.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
-    left: MypyRevision | None
-    right: MypyRevision | None
     if args.pr is not None:
         if (
-            args.left_rev != "master"
-            or args.left_origin != "python/mypy"
-            or args.right_rev != "guess"
-            or args.right_origin != "pypi"
+            args.left_rev != "guess"
+            or args.left_origin != "pypi"
+            or args.right_rev != "master"
+            or args.right_origin != "python/mypy"
         ):
             parser.error("--pr is incompatible with other targets options.")
 
         token = _get_gh_token()
         left, right = _update_apply_args_to_pr(args, token)
     else:
-        left = MypyRevision(rev=args.left_rev, origin=args.left_origin)
-        right = MypyRevision(
-            rev=None if args.right_rev == "guess" else args.right_rev,
-            origin=args.right_origin,
+        left = MypyRevision(
+            rev=None if args.left_rev == "guess" else args.left_rev,
+            origin=args.left_origin,
         )
+        right = MypyRevision(rev=args.right_rev, origin=args.right_origin)
     run_apply(
         left=left if not args.only_right else None,
         right=right if not args.only_left else None,
@@ -116,23 +115,23 @@ def _make_apply_parser() -> argparse.ArgumentParser:
     revs_group = parser.add_argument_group("Targets")
     revs_group.add_argument(
         "--left-rev",
-        default="master",
-        help="Version to use as old, git-style or semver",
+        default="guess",
+        help='Version to use as old ("guess" to infer from issue), git-style or semver',
     )
     revs_group.add_argument(
         "--left-origin",
-        default="python/mypy",
-        help="Origin to use as old, org/repo or 'pypi'",
+        default="pypi",
+        help="Origin to use as old, org/repo or 'pypi'. Ignored if --left-rev is semver",
     )
     revs_group.add_argument(
         "--right-rev",
-        default="guess",
-        help='Version to use as new ("guess" to infer from issue), git-style or semver',
+        default="master",
+        help="Version to use as new, git-style or semver",
     )
     revs_group.add_argument(
         "--right-origin",
-        default="pypi",
-        help="Origin to use as new, org/repo or 'pypi'. Ignored if --right-rev is semver",
+        default="python/mypy",
+        help="Origin to use as new, org/repo or 'pypi'",
     )
     revs_group.add_argument(
         "--pr",
@@ -158,36 +157,42 @@ def _make_apply_parser() -> argparse.ArgumentParser:
 def _update_apply_args_to_pr(
     args: argparse.Namespace, gh_token: str
 ) -> tuple[MypyRevision, MypyRevision]:
-    pr = get_pr(gh_token, args.pr)
-    if pr.merged:
-        # Get a merge commit, compare to its parent. The branch may already be gone.
-        # No need to merge anything here.
-        left = MypyRevision(rev=pr.merge_commit_sha, origin=pr.base.repo.full_name)
+    while True:
+        pr = get_pr(gh_token, args.pr)
+        if pr.merged:
+            # Get a merge commit, compare to its parent. The branch may already be gone.
+            # No need to merge anything here.
+            right = MypyRevision(rev=pr.merge_commit_sha, origin=pr.base.repo.full_name)
 
-        org, repo = pr.base.repo.full_name.split("/")
-        assert pr.merge_commit_sha is not None
-        merge_commit = get_commit(gh_token, pr.merge_commit_sha, org=org, repo=repo)
-        right = MypyRevision(
-            rev=merge_commit.parents[0].sha, origin=pr.base.repo.full_name
-        )
-    else:
-        assert pr.head.repo is not None, "PR does not originate from a repo?.."
-        # If the PR is still alive, we merge its ref (usually python/mypy/master) into
-        # its HEAD and compare against the latest version of the ref.
-        if pr.mergeable:
+            org, repo = pr.base.repo.full_name.split("/")
+            assert pr.merge_commit_sha is not None
+            merge_commit = get_commit(gh_token, pr.merge_commit_sha, org=org, repo=repo)
             left = MypyRevision(
-                rev=pr.head.sha,
-                origin=pr.head.repo.full_name,
-                merge_with=(pr.base.ref, pr.base.repo.full_name),
+                rev=merge_commit.parents[0].sha, origin=pr.base.repo.full_name
             )
-            right = MypyRevision(rev=pr.base.ref, origin=pr.base.repo.full_name)
         else:
-            LOG.warning("PR not mergeable, comparing against its base directly")
-            left = MypyRevision(
-                rev=pr.head.sha, origin=pr.head.repo.full_name, merge_with=None
-            )
-            right = MypyRevision(rev=pr.base.sha, origin=pr.base.repo.full_name)
-    return left, right
+            if pr.mergeable is None:
+                # Evaluation in progress
+                LOG.info("Waiting for merge status to arrive...")
+                time.sleep(2)
+                continue
+            assert pr.head.repo is not None, "PR does not originate from a repo?.."
+            # If the PR is still alive, we merge its ref (usually python/mypy/master) into
+            # its HEAD and compare against the latest version of the ref.
+            if pr.mergeable:
+                left = MypyRevision(rev=pr.base.ref, origin=pr.base.repo.full_name)
+                right = MypyRevision(
+                    rev=pr.head.sha,
+                    origin=pr.head.repo.full_name,
+                    merge_with=(pr.base.ref, pr.base.repo.full_name),
+                )
+            else:
+                LOG.warning("PR not mergeable, comparing against its base directly")
+                left = MypyRevision(rev=pr.base.sha, origin=pr.base.repo.full_name)
+                right = MypyRevision(
+                    rev=pr.head.sha, origin=pr.head.repo.full_name, merge_with=None
+                )
+        return left, right
 
 
 def _make_diff_parser() -> argparse.ArgumentParser:
