@@ -9,6 +9,7 @@ from datetime import datetime
 
 from .apply import (
     LOG as APPLY_LOGGER,
+    MypyRevision,
     run_apply,
 )
 from .diff import diff
@@ -35,6 +36,9 @@ def run_mypy() -> None:
     parser = _make_apply_parser()
     args = parser.parse_args()
     APPLY_LOGGER.setLevel(logging.DEBUG if args.verbose else logging.INFO)
+
+    left: MypyRevision | None
+    right: MypyRevision | None
     if args.pr is not None:
         if (
             args.left_rev != "master"
@@ -45,14 +49,24 @@ def run_mypy() -> None:
             parser.error("--pr is incompatible with other targets options.")
 
         token = _get_gh_token()
-        _update_apply_args_to_pr(args, token)
+        left, right = _update_apply_args_to_pr(args, token)
+    else:
+        left = (
+            MypyRevision(rev=args.left_rev, origin=args.left_origin)
+            if not args.only_right
+            else None
+        )
+        right = (
+            MypyRevision(
+                rev=None if args.right_rev == "guess" else args.right_rev,
+                origin=args.right_origin,
+            )
+            if not args.only_left
+            else None
+        )
     run_apply(
-        left=not args.only_right,
-        right=not args.only_left,
-        left_rev=args.left_rev,
-        left_origin=args.left_origin,
-        right_rev=None if args.right_rev == "guess" else args.right_rev,
-        right_origin=args.right_origin,
+        left,
+        right,
         old_strategy=args.old_strategy,
         shard=args.shard,
         total_shards=args.total_shards,
@@ -149,24 +163,39 @@ def _make_apply_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _update_apply_args_to_pr(args: argparse.Namespace, gh_token: str) -> None:
+def _update_apply_args_to_pr(
+    args: argparse.Namespace, gh_token: str
+) -> tuple[MypyRevision, MypyRevision]:
     pr = get_pr(gh_token, args.pr)
     if pr.merged:
         # Get a merge commit, compare to its parent. The branch may already be gone.
-        args.left_origin = pr.base.repo.full_name
-        args.left_rev = pr.merge_commit_sha
+        # No need to merge anything here.
+        left = MypyRevision(rev=pr.merge_commit_sha, origin=pr.base.repo.full_name)
 
         org, repo = pr.base.repo.full_name.split("/")
         assert pr.merge_commit_sha is not None
         merge_commit = get_commit(gh_token, pr.merge_commit_sha, org=org, repo=repo)
-        args.right_origin = pr.base.repo.full_name
-        args.right_rev = merge_commit.parents[0].sha
+        right = MypyRevision(
+            rev=merge_commit.parents[0].sha, origin=pr.base.repo.full_name
+        )
     else:
-        assert pr.head.repo is not None, "PR does not originate from a repo"
-        args.left_origin = pr.head.repo.full_name
-        args.left_rev = pr.head.sha
-        args.right_origin = pr.base.repo.full_name
-        args.right_rev = pr.base.sha
+        assert pr.head.repo is not None, "PR does not originate from a repo?.."
+        # If the PR is still alive, we merge its ref (usually python/mypy/master) into
+        # its HEAD and compare against the latest version of the ref.
+        if pr.mergeable:
+            left = MypyRevision(
+                rev=pr.head.sha,
+                origin=pr.head.repo.full_name,
+                merge_with=(pr.base.ref, pr.base.repo.full_name),
+            )
+            right = MypyRevision(rev=pr.base.ref, origin=pr.base.repo.full_name)
+        else:
+            LOG.warning("PR not mergeable, comparing against its base directly")
+            left = MypyRevision(
+                rev=pr.head.sha, origin=pr.head.repo.full_name, merge_with=None
+            )
+            right = MypyRevision(rev=pr.base.sha, origin=pr.base.repo.full_name)
+    return left, right
 
 
 def _make_diff_parser() -> argparse.ArgumentParser:
