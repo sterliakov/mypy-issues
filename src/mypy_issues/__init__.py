@@ -51,22 +51,14 @@ def run_mypy() -> None:
         token = _get_gh_token()
         left, right = _update_apply_args_to_pr(args, token)
     else:
-        left = (
-            MypyRevision(rev=args.left_rev, origin=args.left_origin)
-            if not args.only_right
-            else None
-        )
-        right = (
-            MypyRevision(
-                rev=None if args.right_rev == "guess" else args.right_rev,
-                origin=args.right_origin,
-            )
-            if not args.only_left
-            else None
+        left = MypyRevision(rev=args.left_rev, origin=args.left_origin)
+        right = MypyRevision(
+            rev=None if args.right_rev == "guess" else args.right_rev,
+            origin=args.right_origin,
         )
     run_apply(
-        left,
-        right,
+        left=left if not args.only_right else None,
+        right=right if not args.only_left else None,
         old_strategy=args.old_strategy,
         shard=args.shard,
         total_shards=args.total_shards,
