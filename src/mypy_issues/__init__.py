@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 
 from .apply import (
@@ -156,36 +157,42 @@ def _make_apply_parser() -> argparse.ArgumentParser:
 def _update_apply_args_to_pr(
     args: argparse.Namespace, gh_token: str
 ) -> tuple[MypyRevision, MypyRevision]:
-    pr = get_pr(gh_token, args.pr)
-    if pr.merged:
-        # Get a merge commit, compare to its parent. The branch may already be gone.
-        # No need to merge anything here.
-        right = MypyRevision(rev=pr.merge_commit_sha, origin=pr.base.repo.full_name)
+    while True:
+        pr = get_pr(gh_token, args.pr)
+        if pr.merged:
+            # Get a merge commit, compare to its parent. The branch may already be gone.
+            # No need to merge anything here.
+            right = MypyRevision(rev=pr.merge_commit_sha, origin=pr.base.repo.full_name)
 
-        org, repo = pr.base.repo.full_name.split("/")
-        assert pr.merge_commit_sha is not None
-        merge_commit = get_commit(gh_token, pr.merge_commit_sha, org=org, repo=repo)
-        left = MypyRevision(
-            rev=merge_commit.parents[0].sha, origin=pr.base.repo.full_name
-        )
-    else:
-        assert pr.head.repo is not None, "PR does not originate from a repo?.."
-        # If the PR is still alive, we merge its ref (usually python/mypy/master) into
-        # its HEAD and compare against the latest version of the ref.
-        if pr.mergeable:
-            left = MypyRevision(rev=pr.base.ref, origin=pr.base.repo.full_name)
-            right = MypyRevision(
-                rev=pr.head.sha,
-                origin=pr.head.repo.full_name,
-                merge_with=(pr.base.ref, pr.base.repo.full_name),
+            org, repo = pr.base.repo.full_name.split("/")
+            assert pr.merge_commit_sha is not None
+            merge_commit = get_commit(gh_token, pr.merge_commit_sha, org=org, repo=repo)
+            left = MypyRevision(
+                rev=merge_commit.parents[0].sha, origin=pr.base.repo.full_name
             )
         else:
-            LOG.warning("PR not mergeable, comparing against its base directly")
-            left = MypyRevision(rev=pr.base.sha, origin=pr.base.repo.full_name)
-            right = MypyRevision(
-                rev=pr.head.sha, origin=pr.head.repo.full_name, merge_with=None
-            )
-    return left, right
+            if pr.mergeable is None:
+                # Evaluation in progress
+                LOG.info("Waiting for merge status to arrive...")
+                time.sleep(2)
+                continue
+            assert pr.head.repo is not None, "PR does not originate from a repo?.."
+            # If the PR is still alive, we merge its ref (usually python/mypy/master) into
+            # its HEAD and compare against the latest version of the ref.
+            if pr.mergeable:
+                left = MypyRevision(rev=pr.base.ref, origin=pr.base.repo.full_name)
+                right = MypyRevision(
+                    rev=pr.head.sha,
+                    origin=pr.head.repo.full_name,
+                    merge_with=(pr.base.ref, pr.base.repo.full_name),
+                )
+            else:
+                LOG.warning("PR not mergeable, comparing against its base directly")
+                left = MypyRevision(rev=pr.base.sha, origin=pr.base.repo.full_name)
+                right = MypyRevision(
+                    rev=pr.head.sha, origin=pr.head.repo.full_name, merge_with=None
+                )
+        return left, right
 
 
 def _make_diff_parser() -> argparse.ArgumentParser:

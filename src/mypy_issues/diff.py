@@ -246,7 +246,7 @@ def diff_one(
     outs = []
     snips = []
     for right in right_files:
-        left = RIGHT_OUTPUTS / right.name
+        left = LEFT_OUTPUTS / right.name
         if not left.is_file():
             continue
         left_out = left.read_text()
