@@ -346,7 +346,6 @@ class MypyRevision:
                     "--no-edit",
                 ],
                 cwd=wd,
-                stderr=subprocess.STDOUT,
             )
 
         LOG.debug("Installing mypy %s from source...", rev)
