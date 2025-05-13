@@ -339,7 +339,12 @@ class MypyRevision:
             merge_branch, merge_origin = self.merge_with
             LOG.info("Merging %s of %r...", merge_branch, merge_origin)
             subprocess.check_output(
-                [GIT, "merge", f"{self._remote_name(merge_origin)}/{merge_branch}"],
+                [
+                    GIT,
+                    "merge",
+                    f"{self._remote_name(merge_origin)}/{merge_branch}",
+                    "--no-edit",
+                ],
                 cwd=wd,
                 stderr=subprocess.STDOUT,
             )
