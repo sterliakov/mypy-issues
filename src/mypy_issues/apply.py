@@ -172,7 +172,11 @@ def run_right(inventory: list[InventoryItem], revision: MypyRevision) -> None:
         # Use guessed version for each snippet
         for ver, files_ in groupby(sorted(inventory, key=get_ver), key=get_ver):
             files = list(files_)
-            mypy = MypyRevision(".".join(map(str, ver)), revision.origin).setup()
+            try:
+                mypy = MypyRevision(".".join(map(str, ver)), revision.origin).setup()
+            except UnknownVersionError:
+                LOG.warning("Failed to switch to version %s", ver)
+                continue
             run_on_files(
                 mypy,
                 [SNIPPETS_ROOT / f["filename"] for f in files],
@@ -334,14 +338,11 @@ class MypyRevision:
         if self.merge_with is not None:
             merge_branch, merge_origin = self.merge_with
             LOG.info("Merging %s of %r...", merge_branch, merge_origin)
-            try:
-                subprocess.check_output(
-                    [GIT, "merge", f"{self._remote_name(merge_origin)}/{merge_branch}"],
-                    cwd=wd,
-                    stderr=subprocess.STDOUT,
-                )
-            except subprocess.CalledProcessError:
-                LOG.warning("Cannot merge the PR head, proceeding with what we have.")
+            subprocess.check_output(
+                [GIT, "merge", f"{self._remote_name(merge_origin)}/{merge_branch}"],
+                cwd=wd,
+                stderr=subprocess.STDOUT,
+            )
 
         LOG.debug("Installing mypy %s from source...", rev)
         args = ["pip", "install", "--reinstall", "--python", f"{venv}/bin/python", "."]
