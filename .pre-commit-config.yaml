@@ -26,7 +26,7 @@ repos:
         args: [--fix]
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.7.11
+    rev: 0.7.12
     hooks:
       - id: uv-lock
 
