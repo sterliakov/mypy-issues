@@ -21,7 +21,7 @@ on:
         description: Right (new) revision
         default: pypi
   issues:
-    types: [opened]
+    types: [opened, reopened]
   issue_comment:
     types: [created]
 

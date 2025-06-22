@@ -3,10 +3,11 @@ Compare `mypy` output on valid snippets from `mypy` issues.
 ## Online usage
 
 To run against a PR, simply create an issue with PR number in title
-(e.g. "Check #12345") and wait approx. 25 minutes for results to arrive
+(e.g. "Check #12345") and wait 8-10 minutes for results to arrive
 in comments.
 
-Comment on the issue to run again (e.g. if upstream PR was updated).
+Comment on the issue or close and reopen it to run the check again
+(e.g. if upstream PR was updated).
 
 Issues will be closed after 14 days of inactivity.
 
