@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  sync:
+  close-old-issues:
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -24,7 +24,7 @@ jobs:
           exclude-labels: immortal
       - name: Close issues with merged PRs
         run: |
-          set -ux
+          set -euo pipefail
           while read -r line; do
             issue=$(jq '.number' -r <<<"$line")
             title=$(jq '.title' -r <<<"$line")
@@ -33,10 +33,12 @@ jobs:
             if ! [[ "$pr" =~ $re ]]; then
               continue;
             fi
-            status=$(GH_TOKEN="${GH_TOKEN_PUBLIC}" gh --repo python/mypy pr view "$pr" --json state | jq '.state' -r)
+            status=$(\
+              GH_TOKEN="${GH_TOKEN_PUBLIC}" gh --repo python/mypy pr view "$pr" --json state | jq '.state' -r \
+              || echo "unknown" \
+            )
             if [[ $status = "MERGED" ]]; then
-              printf "Closing %d\n" "$issue"
-              # gh issue close "$issue"
+              gh issue close "$issue"
             fi
           done < <(jq -c '.[]' <<<"$ISSUES")
         env:
