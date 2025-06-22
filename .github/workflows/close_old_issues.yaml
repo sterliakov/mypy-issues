@@ -33,9 +33,9 @@ jobs:
             if ! [[ "$pr" =~ $re ]]; then
               continue;
             fi
-            status=$(\
+            status=$(
               GH_TOKEN="${GH_TOKEN_PUBLIC}" gh --repo python/mypy pr view "$pr" --json state | jq '.state' -r \
-              || echo "unknown" \
+              || echo "unknown"
             )
             if [[ $status = "MERGED" ]]; then
               gh issue close "$issue"
