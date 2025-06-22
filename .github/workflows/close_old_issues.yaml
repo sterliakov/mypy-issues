@@ -40,7 +40,7 @@ jobs:
               GH_TOKEN="${GH_TOKEN_PUBLIC}" gh --repo python/mypy pr view "$pr" --json state | jq '.state' -r \
               || echo "unknown"
             )
-            if [[ $status = "MERGED" ]]; then
+            if [[ $status = "MERGED" ]] || [[ $status = "unknown" ]]; then
               gh issue close "$issue"
             fi
           done < <(jq -c '.[]' <<<"$ISSUES")
