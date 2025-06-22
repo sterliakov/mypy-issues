@@ -9,15 +9,42 @@ permissions:
   contents: read
 
 jobs:
-  sync:
+  close-old-issues:
     runs-on: ubuntu-latest
     permissions:
       issues: write
     steps:
-      - name: close-issues
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: List open issues
+        id: list-issues
         uses: actions-cool/issues-helper@v3
         with:
-          actions: close-issues
+          actions: find-issues
           token: ${{ secrets.GITHUB_TOKEN }}
-          inactive-day: 14
+          issue-state: open
           exclude-labels: immortal
+      - name: Close issues with merged PRs
+        run: |
+          set -euo pipefail
+          while read -r line; do
+            issue=$(jq '.number' -r <<<"$line")
+            title=$(jq '.title' -r <<<"$line")
+            pr=$(sed -E 's/.*#([[:digit:]]+).*/\1/g' <<<"$title")
+            re='^[0-9]+$'
+            if ! [[ "$pr" =~ $re ]]; then
+              continue;
+            fi
+            status=$(
+              GH_TOKEN="${GH_TOKEN_PUBLIC}" gh --repo python/mypy pr view "$pr" --json state | jq '.state' -r \
+              || echo "unknown"
+            )
+            if [[ $status = "MERGED" ]] || [[ $status = "unknown" ]]; then
+              gh issue close "$issue"
+            fi
+          done < <(jq -c '.[]' <<<"$ISSUES")
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN_PUBLIC: ${{ secrets.CUSTOM_GITHUB_PAT }}
+          ISSUES: ${{ steps.list-issues.outputs.issues }}

@@ -9,7 +9,7 @@ in comments.
 Comment on the issue or close and reopen it to run the check again
 (e.g. if upstream PR was updated).
 
-Issues will be closed after 14 days of inactivity.
+Issues will be closed automatically when the upstream PR is merged.
 
 ## Prerequisites
 
