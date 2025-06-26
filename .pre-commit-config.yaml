@@ -26,7 +26,7 @@ repos:
         args: [--fix]
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.7.14
+    rev: 0.7.15
     hooks:
       - id: uv-lock
 
@@ -37,7 +37,7 @@ repos:
         args: [-x, -P, SCRIPTDIR]
 
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.14.0
+    rev: v2.15.0
     hooks:
       - id: pretty-format-yaml
         args: [--autofix, --indent, '2', --offset, '2']
