@@ -234,7 +234,7 @@ jobs:
           body: |
             Results are ready!
 
-            PR link: https://github.com/python/mypy/pulls/${{ needs.get-target.outputs.pr-number }}
+            PR link: https://github.com/python/mypy/pull/${{ needs.get-target.outputs.pr-number }}
 
             ```diff
             ${{ steps.compare.outputs.diff-text }}
