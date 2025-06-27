@@ -191,7 +191,7 @@ jobs:
   diff:
     runs-on: ubuntu-latest
     if: ${{ !github.event.issue.pull_request }}
-    needs: [apply]
+    needs: [apply, get-target]
     permissions:
       issues: write
 
@@ -233,6 +233,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
             Results are ready!
+
+            PR link: https://github.com/python/mypy/pulls/${{ needs.get-target.outputs.pr-number }}
 
             ```diff
             ${{ steps.compare.outputs.diff-text }}
