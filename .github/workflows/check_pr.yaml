@@ -11,14 +11,14 @@ on:
         description: Left (old) revision
       left_origin:
         type: string
-        description: Left (old) revision
+        description: Left (old) origin
         default: pypi
       right_rev:
         type: string
         description: Right (new) revision
       right_origin:
         type: string
-        description: Right (new) revision
+        description: Right (new) origin
         default: pypi
   issues:
     types: [opened, reopened]
