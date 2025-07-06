@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 from .apply import (
     LOG as APPLY_LOGGER,
@@ -79,7 +79,7 @@ def _make_fetch_parser() -> argparse.ArgumentParser:
         if val == "detect":
             return None
         try:
-            return datetime.fromisoformat(val)
+            return datetime.fromisoformat(val).replace(tzinfo=UTC)
         except ValueError:
             parser.error(f"Invalid datetime value: {val!r}")
 
