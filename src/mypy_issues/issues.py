@@ -406,7 +406,15 @@ def store_snippet(snip: Snippet) -> bool:
         )
         if has_undef_names and "__future__" not in snip.body:
             # Try to recover
-            dest.write_text("from typing import *  # Added by us\n" + snip.body)
+            import_typing = "from typing import *  # Added by us"
+            lines = snip.body.splitlines()
+            for i, line in enumerate(lines):
+                if not line.startswith("#"):
+                    lines.insert(i, import_typing)
+                    break
+            else:
+                lines.append(import_typing)
+            dest.write_text("\n".join(lines))
     LOG.debug("Added snippet %s.", dest.name)
     return True
 
