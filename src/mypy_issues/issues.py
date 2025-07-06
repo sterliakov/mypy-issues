@@ -64,12 +64,21 @@ async def download_snippets(  # noqa: C901
     if INVENTORY_FILE.is_file() and ISSUES_FILE.is_file():
         inventory = load_inventory()
         issues = load_issues()
+        removed = set()
         if since is None:
             since = max(
                 (iss.issue.created_at for iss in issues.values()),
                 default=datetime.fromtimestamp(0, tz=UTC),
             )
-        removed = {iss.number async for iss in _get_closed_issues(gh, org, repo, since)}
+        else:
+            removed.update({
+                iss.issue.number
+                for iss in issues.values()
+                if iss.issue.created_at > since
+            })
+        removed.update({
+            iss.number async for iss in _get_closed_issues(gh, org, repo, since)
+        })
         removed_count = sum(n in issues for n in removed)
         comments = await _get_comments(gh, org, repo, since)
         # Just sync issues with new comments from scratch, that should be cheap.
@@ -404,12 +413,12 @@ def store_snippet(snip: Snippet) -> bool:
             for line in exc.stdout.splitlines()
             if "reveal_type" not in line
         )
-        if has_undef_names and "__future__" not in snip.body:
+        if has_undef_names:
             # Try to recover
             import_typing = "from typing import *  # Added by us"
             lines = snip.body.splitlines()
             for i, line in enumerate(lines):
-                if not line.startswith("#"):
+                if not line.startswith("#") and "__future__" not in line:
                     lines.insert(i, import_typing)
                     break
             else:
