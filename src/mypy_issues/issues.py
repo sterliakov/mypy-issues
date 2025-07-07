@@ -60,6 +60,7 @@ async def download_snippets(  # noqa: C901
     inventory: list[InventoryItem] = []
     issues: dict[int, IssueWithComments] = {}
     seen: set[str] = set()
+    last_known_issues: set[int] = set()
     removed_count = 0
     if INVENTORY_FILE.is_file() and ISSUES_FILE.is_file():
         inventory = load_inventory()
@@ -83,11 +84,11 @@ async def download_snippets(  # noqa: C901
         comments = await _get_comments(gh, org, repo, since)
         # Just sync issues with new comments from scratch, that should be cheap.
         removed.update(comments.keys())
+        last_known_issues = set(issues.keys())
         inventory, issues = _incremental_update(inventory, issues, removed)
         seen = {snip["filename"] for snip in inventory}
 
     event = asyncio.Event()
-    last_known_issues = set(issues.keys())
     new_issues: set[int] = set()
     async for batch in abatch(_get_issues(gh, event, org, repo, since), size=64):
         blocks = await asyncio.gather(*[
