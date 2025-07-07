@@ -317,6 +317,7 @@ jobs:
           . .venv/bin/activate
           uv pip install '.[mypyc]'
           uv pip install -r build-requirements.txt
+          uv pip install -r test-requirements.txt
           python ./misc/perf_compare.py master "$PR_HEAD_HASH" | tee results.txt
           {
               printf 'result_run_%s<<EOF\n' "$SEQUENCE_NO"
