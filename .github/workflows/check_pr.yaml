@@ -315,10 +315,11 @@ jobs:
         run: |
           uv venv
           . .venv/bin/activate
-          uv pip install -e .
+          uv pip install '.[mypyc]'
+          uv pip install -r build-requirements.txt
           python ./misc/perf_compare.py master "$PR_HEAD_HASH" | tee results.txt
           {
-              printf 'result_run_%s<<EOF' "$SEQUENCE_NO"
+              printf 'result_run_%s<<EOF\n' "$SEQUENCE_NO"
               sed -ne '/===/,$ p' results.txt
               echo EOF
           } >>"$GITHUB_OUTPUT"
@@ -337,14 +338,16 @@ jobs:
 
   bench-report:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.issue.pull_request && needs.get-target.outputs.action == 'bench' }}
+    if: |
+      !github.event.issue.pull_request
+      && needs.get-target.outputs.action == 'bench'
+      && (github.event_name == 'issues' || github.event_name == 'issue_comment')
     needs: [get-target, bench]
     permissions:
       issues: write
 
     steps:
       - name: Post results
-        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
         uses: actions-cool/issues-helper@v3
         with:
           actions: create-comment
