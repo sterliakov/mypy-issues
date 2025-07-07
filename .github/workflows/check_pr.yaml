@@ -313,6 +313,8 @@ jobs:
       - name: Run benchmark
         id: run-bench
         run: |
+          uv venv
+          . .venv/bin/activate
           uv pip install -e .
           python ./misc/perf_compare.py master "$PR_HEAD_HASH" | tee results.txt
           {
