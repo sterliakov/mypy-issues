@@ -308,6 +308,7 @@ jobs:
           printf 'target_hash=%s' "$hash" >>"$GITHUB_OUTPUT"
         env:
           PR_NUMBER: ${{ needs.get-target.outputs.pr_number }}
+          GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
 
       - name: Run benchmark
         id: run-bench
