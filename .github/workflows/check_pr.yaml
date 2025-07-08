@@ -1,4 +1,4 @@
-name: Find PR diffs
+name: Check PR
 
 on:
   workflow_dispatch:
@@ -112,7 +112,7 @@ jobs:
             Depending on the desider action, use the following issue titles:
 
             * Check a PR against all open tickets: `Check #xxxxx`
-            * Run a few benchmarks for a PR: `Bench #xxxxx` or `Benchmark #xxxx`
+            * Run a few benchmarks for a PR: `Bench #xxxxx`
 
   fetch:
     runs-on: ubuntu-latest
@@ -285,6 +285,8 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !github.event.issue.pull_request && needs.get-target.outputs.action == 'bench' }}
     needs: [get-target]
+    permissions:
+      issues: write
 
     strategy:
       matrix:
@@ -311,6 +313,7 @@ jobs:
       - name: Checkout PR
         id: get-hash
         run: |
+          git config --global advice.detachedHead false
           gh pr checkout "$PR_NUMBER"
           hash=$(git rev-parse HEAD)
           printf 'head_hash=%s\n' "$hash" >>"$GITHUB_OUTPUT"

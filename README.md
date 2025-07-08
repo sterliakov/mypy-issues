@@ -3,11 +3,15 @@ Compare `mypy` output on valid snippets from `mypy` issues.
 ## Online usage
 
 To run against a PR, simply create an issue with PR number in title
-(e.g. "Check #12345") and wait 8-10 minutes for results to arrive
-in comments.
+(e.g. "Check #12345") and wait for results to arrive in comments.
 
 Comment on the issue or close and reopen it to run the check again
 (e.g. if upstream PR was updated).
+
+The following title formats are supported:
+
+* `Check #xxxx` - run a PR against all open mypy issues (8-10 min)
+* `Bench #xxxx` - run a selfcheck benchmark on this PR (approx. 20 min)
 
 Issues will be closed automatically when the upstream PR is merged.
 
