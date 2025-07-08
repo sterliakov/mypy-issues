@@ -101,15 +101,20 @@ jobs:
 
       - name: Report progress
         if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: update-issue
-          token: ${{ secrets.GITHUB_TOKEN }}
-          update-mode: append
-          body: |
+        run: |
+          gh issue view "$ISSUE" --json body | jq -r '.body' >body.txt
+          cat >>body.txt <<-EOF
             ${{ env.MARKER }}
 
-            Running ${{ steps.pr-number.outputs.action }} on #${{ steps.pr-number.outputs.pr }}...
+            Running $ACTION on #$INPUT_PR...
+          EOF
+          gh issue edit "$ISSUE" --body-file body.txt
+          rm body.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_PR: ${{ inputs.pr }}
+          ACTION: ${{ inputs.action }}
+          ISSUE: ${{ github.event.issue.number }}
 
       - name: Report failure
         if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
@@ -442,4 +447,5 @@ jobs:
           gh issue edit "$ISSUE" --body-file body.new.txt
           rm body.txt body.new.txt
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE: ${{ github.event.issue.number }}
