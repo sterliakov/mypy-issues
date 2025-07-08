@@ -116,8 +116,8 @@ jobs:
           rm body.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_PR: ${{ inputs.pr }}
-          ACTION: ${{ inputs.action }}
+          INPUT_PR: ${{ steps.pr-number.outputs.pr }}
+          ACTION: ${{ steps.pr-number.outputs.action }}
           ISSUE: ${{ github.event.issue.number }}
 
       - name: Report failure
