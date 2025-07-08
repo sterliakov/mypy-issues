@@ -35,6 +35,10 @@ on:
 permissions:
   contents: read
 
+env:
+  BENCH_RUNS_SELFCHECK: 30
+  BENCH_RUNS_SIMPLE: 50
+
 jobs:
   get-target:
     runs-on: ubuntu-latest
@@ -285,10 +289,14 @@ jobs:
     strategy:
       matrix:
         iter: [1, 2, 3]
+        sample: [selfcheck, simple]
     outputs:
-      result_run_1: ${{ steps.run-bench.outputs.result_run_1 }}
-      result_run_2: ${{ steps.run-bench.outputs.result_run_2 }}
-      result_run_3: ${{ steps.run-bench.outputs.result_run_3 }}
+      result_run_selfcheck_1: ${{ steps.run-bench.outputs.result_run_selfcheck_1 }}
+      result_run_selfcheck_2: ${{ steps.run-bench.outputs.result_run_selfcheck_2 }}
+      result_run_selfcheck_3: ${{ steps.run-bench.outputs.result_run_selfcheck_3 }}
+      result_run_simple_1: ${{ steps.run-bench.outputs.result_run_simple_1 }}
+      result_run_simple_2: ${{ steps.run-bench.outputs.result_run_simple_2 }}
+      result_run_simple_3: ${{ steps.run-bench.outputs.result_run_simple_3 }}
 
     steps:
       - uses: actions/checkout@v4
@@ -305,7 +313,9 @@ jobs:
         run: |
           gh pr checkout "$PR_NUMBER"
           hash=$(git rev-parse HEAD)
-          printf 'target_hash=%s' "$hash" >>"$GITHUB_OUTPUT"
+          printf 'head_hash=%s\n' "$hash" >>"$GITHUB_OUTPUT"
+          base_hash=$(gh pr view "$PR_NUMBER" --json baseRefOid)
+          printf 'base_hash=%s\n' "$base_hash" >>"$GITHUB_OUTPUT"
         env:
           PR_NUMBER: ${{ needs.get-target.outputs.pr_number }}
           GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
@@ -318,14 +328,26 @@ jobs:
           uv pip install '.[mypyc]'
           uv pip install -r build-requirements.txt
           uv pip install -r test-requirements.txt
-          python ./misc/perf_compare.py master "$PR_HEAD_HASH" | tee results.txt
+
+          extra_args=()
+          if [[ "$CHECK" = "simple" ]]; then
+            extra_args+=( '-c' 'import typing' )
+          fi
+          python ./misc/perf_compare.py \
+            "$PR_BASE_HASH" "$PR_HEAD_HASH" \
+            --num-runs "$NUM_RUNS" \
+            "${extra_args[@]}" \
+            | tee results.txt
           {
-              printf 'result_run_%s<<EOF\n' "$SEQUENCE_NO"
+              printf 'result_run_%s_%s<<EOF\n' "$CHECK" "$SEQUENCE_NO"
               sed -ne '/===/,$ p' results.txt
               echo EOF
           } >>"$GITHUB_OUTPUT"
         env:
-          PR_HEAD_HASH: ${{ steps.get-hash.outputs.target_hash }}
+          PR_HEAD_HASH: ${{ steps.get-hash.outputs.head_hash }}
+          PR_BASE_HASH: ${{ steps.get-hash.outputs.base_hash }}
+          NUM_RUNS: ${{ matrix.sample == 'simple' && env.BENCH_RUNS_SIMPLE || env.BENCH_RUNS_SELFCHECK }}
+          CHECK: ${{ matrix.sample }}
           SEQUENCE_NO: ${{ matrix.iter }}
 
       - name: Report failure
@@ -358,16 +380,30 @@ jobs:
 
             PR link: https://github.com/python/mypy/pull/${{ needs.get-target.outputs.pr_number }}
 
-            Results over three rounds for selfcheck (N=15):
+            Results over three rounds for selfcheck (N=${{ env.BENCH_RUNS_SELFCHECK }}):
 
             ```
-            ${{ needs.bench.outputs.result_run_1 }}
-            ```
-
-            ```
-            ${{ needs.bench.outputs.result_run_2 }}
+            ${{ needs.bench.outputs.result_run_selfcheck_1 }}
             ```
 
             ```
-            ${{ needs.bench.outputs.result_run_3 }}
+            ${{ needs.bench.outputs.result_run_selfcheck_2 }}
+            ```
+
+            ```
+            ${{ needs.bench.outputs.result_run_selfcheck_3 }}
+            ```
+
+            Results over three rounds for `import typing` (N=${{ env.BENCH_RUNS_SIMPLE }}):
+
+            ```
+            ${{ needs.bench.outputs.result_run_simple_1 }}
+            ```
+
+            ```
+            ${{ needs.bench.outputs.result_run_simple_2 }}
+            ```
+
+            ```
+            ${{ needs.bench.outputs.result_run_simple_3 }}
             ```
