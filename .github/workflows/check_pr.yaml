@@ -50,6 +50,10 @@ jobs:
       pr_number: ${{ steps.pr-number.outputs.pr }}
       action: ${{ steps.pr-number.outputs.action }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Get issue
         id: get-issue
         if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
@@ -440,6 +444,9 @@ jobs:
     permissions:
       issues: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Clear body
         run: |
           gh issue view "$ISSUE" --json body | jq -r '.body' >body.txt
