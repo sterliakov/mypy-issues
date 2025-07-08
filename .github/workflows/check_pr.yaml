@@ -38,6 +38,7 @@ permissions:
 env:
   BENCH_RUNS_SELFCHECK: 30
   BENCH_RUNS_SIMPLE: 50
+  MARKER: <!-- marker -->
 
 jobs:
   get-target:
@@ -97,6 +98,18 @@ jobs:
           INPUT_PR: ${{ inputs.pr }}
           ACTION: ${{ inputs.action }}
           ISSUE_TITLE: ${{ steps.get-issue.outputs.issue-title }}
+
+      - name: Report progress
+        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: update-issue
+          token: ${{ secrets.GITHUB_TOKEN }}
+          update-mode: append
+          body: |
+            ${{ env.MARKER }}
+
+            Running ${{ steps.pr-number.outputs.action }} on #${{ steps.pr-number.outputs.pr }}...
 
       - name: Report failure
         if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
@@ -410,3 +423,23 @@ jobs:
             ```
             ${{ needs.bench.outputs.result_run_simple_3 }}
             ```
+
+  clear-body:
+    runs-on: ubuntu-latest
+    name: Remove progress report from issue body
+    if: |
+      always() && !cancelled()
+      && !github.event.issue.pull_request
+      && (github.event_name == 'issues' || github.event_name == 'issue_comment')
+    needs: [bench-report, diff]
+    permissions:
+      issues: write
+    steps:
+      - name: Clear body
+        run: |
+          gh issue view "$ISSUE" --json body | jq -r '.body' >body.txt
+          sed -e 's/${{ env.MARKER }}/Q' body.txt >body.new.txt
+          gh issue edit "$ISSUE" --body-file body.new.txt
+          rm body.txt body.new.txt
+        env:
+          ISSUE: ${{ github.event.issue.number }}
