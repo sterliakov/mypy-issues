@@ -450,7 +450,7 @@ jobs:
       - name: Clear body
         run: |
           gh issue view "$ISSUE" --json body | jq -r '.body' >body.txt
-          sed -e 's/${{ env.MARKER }}/Q' body.txt >body.new.txt
+          sed -e '/${{ env.MARKER }}/Q' body.txt >body.new.txt
           gh issue edit "$ISSUE" --body-file body.new.txt
           rm body.txt body.new.txt
         env:
