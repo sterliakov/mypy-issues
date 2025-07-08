@@ -314,7 +314,7 @@ jobs:
           gh pr checkout "$PR_NUMBER"
           hash=$(git rev-parse HEAD)
           printf 'head_hash=%s\n' "$hash" >>"$GITHUB_OUTPUT"
-          base_hash=$(gh pr view "$PR_NUMBER" --json baseRefOid)
+          base_hash=$(gh pr view "$PR_NUMBER" --json baseRefOid | jq -r '.baseRefOid')
           printf 'base_hash=%s\n' "$base_hash" >>"$GITHUB_OUTPUT"
         env:
           PR_NUMBER: ${{ needs.get-target.outputs.pr_number }}
