@@ -40,8 +40,10 @@ jobs:
               GH_TOKEN="${GH_TOKEN_PUBLIC}" gh --repo python/mypy pr view "$pr" --json state | jq '.state' -r \
               || echo "unknown"
             )
-            if [[ $status = "MERGED" ]] || [[ $status = "unknown" ]]; then
-              gh issue close "$issue"
+            if [[ $status = "MERGED" ]]; then
+              gh issue close "$issue" --reason completed
+            elif [[ $status = "unknown" ]]; then
+              gh issue close "$issue" --reason "not planned"
             fi
           done < <(jq -c '.[]' <<<"$ISSUES")
         env:

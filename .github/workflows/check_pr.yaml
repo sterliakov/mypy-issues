@@ -1,4 +1,4 @@
-name: Find PR diffs
+name: Check PR
 
 on:
   workflow_dispatch:
@@ -6,6 +6,13 @@ on:
       pr:
         type: number
         description: PR to check
+        required: true
+      action:
+        type: choice
+        description: Action to perform
+        required: true
+        default: check
+        options: [check, bench]
       left_rev:
         type: string
         description: Left (old) revision
@@ -28,6 +35,10 @@ on:
 permissions:
   contents: read
 
+env:
+  BENCH_RUNS_SELFCHECK: 30
+  BENCH_RUNS_SIMPLE: 50
+
 jobs:
   get-target:
     runs-on: ubuntu-latest
@@ -35,9 +46,10 @@ jobs:
     permissions:
       issues: write
     outputs:
-      pr-number: ${{ steps.pr-number.outputs.pr }}
+      pr_number: ${{ steps.pr-number.outputs.pr }}
+      action: ${{ steps.pr-number.outputs.action }}
     steps:
-      - name: Get Issue
+      - name: Get issue
         id: get-issue
         if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
         uses: actions-cool/issues-helper@v3
@@ -46,22 +58,35 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get PR number to check
-        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' || inputs.pr != null }}
         id: pr-number
         run: |
-          if [ -z "${INPUT_PR}" ]; then
-              pr=$(sed -E 's/.*#([[:digit:]]+).*/\1/g' <<<"${ISSUE_TITLE}")
+          if [ -z "${INPUT_PR}" ] || [ -z "$ACTION" ]; then
+              case "${ISSUE_TITLE,,}" in
+                  'check #'*)
+                      pr=${ISSUE_TITLE##*#}
+                      action="check"
+                      ;;
+                  'bench #'*)
+                      pr=${ISSUE_TITLE##*#}
+                      action="bench"
+                      ;;
+                  *)
+                      pr="invalid"
+                      action="invalid"
+              esac
           else
               pr=${INPUT_PR}
+              action=${ACTION}
           fi
 
           re='^[0-9]+$'
           if ! [[ "$pr" =~ $re ]]; then
-              msg='No PR number found'
+              msg="No PR number found"
           elif ! gh --repo python/mypy pr view "$pr"; then
               msg=$(printf "PR #%s not found in python/mypy" "$pr")
           else
-              echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+              printf "pr=%s\n" "${pr}" >> "$GITHUB_OUTPUT"
+              printf "action=%s\n" "${action}" >> "$GITHUB_OUTPUT"
               exit 0
           fi
           printf "%s\n" "$msg" >&2
@@ -70,6 +95,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
           INPUT_PR: ${{ inputs.pr }}
+          ACTION: ${{ inputs.action }}
           ISSUE_TITLE: ${{ steps.get-issue.outputs.issue-title }}
 
       - name: Report failure
@@ -83,9 +109,15 @@ jobs:
 
             Comment with any text to retry (feel free to edit the title beforehand).
 
+            Depending on the desider action, use the following issue titles:
+
+            * Check a PR against all open tickets: `Check #xxxxx`
+            * Run a few benchmarks for a PR: `Bench #xxxxx`
+
   fetch:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.issue.pull_request }}
+    needs: [get-target]
+    if: ${{ !github.event.issue.pull_request && needs.get-target.outputs.action == 'check' }}
     steps:
       - uses: actions/cache/restore@v4
         id: restore-issues
@@ -120,7 +152,7 @@ jobs:
 
   apply:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.issue.pull_request }}
+    if: ${{ !github.event.issue.pull_request && needs.get-target.outputs.action == 'check' }}
     permissions:
       issues: write
     needs: [get-target, fetch]
@@ -152,7 +184,7 @@ jobs:
               --total-shards 2
         env:
           GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
-          PR: ${{ needs.get-target.outputs.pr-number }}
+          PR: ${{ needs.get-target.outputs.pr_number }}
           TQDM_MININTERVAL: '5'
 
       - name: Apply mypy (two versions)
@@ -190,7 +222,7 @@ jobs:
 
   diff:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.issue.pull_request }}
+    if: ${{ !github.event.issue.pull_request && needs.get-target.outputs.action == 'check' }}
     needs: [apply, get-target]
     permissions:
       issues: write
@@ -218,9 +250,9 @@ jobs:
         run: |
           uv run diff --no-snippets --diff-originals | tee out.txt
           {
-              echo 'diff-text<<EOF';
-              sed -e 's/\x1b\[1;3.m//g' -e 's/\x1b\[0m//g' out.txt;
-              echo 'EOF';
+              echo 'diff_text<<EOF'
+              sed -e 's/\x1b\[1;3.m//g' -e 's/\x1b\[0m//g' out.txt
+              echo 'EOF'
           } >> "$GITHUB_OUTPUT"
         env:
           GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
@@ -232,12 +264,12 @@ jobs:
           actions: create-comment
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            Results are ready!
+            Check results are ready!
 
-            PR link: https://github.com/python/mypy/pull/${{ needs.get-target.outputs.pr-number }}
+            PR link: https://github.com/python/mypy/pull/${{ needs.get-target.outputs.pr_number }}
 
             ```diff
-            ${{ steps.compare.outputs.diff-text }}
+            ${{ steps.compare.outputs.diff_text }}
             ```
 
       - name: Report failure
@@ -248,3 +280,133 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
             Sorry, something went wrong during diff generation.
+
+  bench:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.issue.pull_request && needs.get-target.outputs.action == 'bench' }}
+    needs: [get-target]
+    permissions:
+      issues: write
+
+    strategy:
+      matrix:
+        iter: [1, 2, 3]
+        sample: [selfcheck, simple]
+    outputs:
+      result_run_selfcheck_1: ${{ steps.run-bench.outputs.result_run_selfcheck_1 }}
+      result_run_selfcheck_2: ${{ steps.run-bench.outputs.result_run_selfcheck_2 }}
+      result_run_selfcheck_3: ${{ steps.run-bench.outputs.result_run_selfcheck_3 }}
+      result_run_simple_1: ${{ steps.run-bench.outputs.result_run_simple_1 }}
+      result_run_simple_2: ${{ steps.run-bench.outputs.result_run_simple_2 }}
+      result_run_simple_3: ${{ steps.run-bench.outputs.result_run_simple_3 }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: python/mypy
+          token: ${{ secrets.CUSTOM_GITHUB_PAT }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+
+      - name: Checkout PR
+        id: get-hash
+        run: |
+          git config --global advice.detachedHead false
+          gh pr checkout "$PR_NUMBER"
+          hash=$(git rev-parse HEAD)
+          printf 'head_hash=%s\n' "$hash" >>"$GITHUB_OUTPUT"
+          base_hash=$(gh pr view "$PR_NUMBER" --json baseRefOid | jq -r '.baseRefOid')
+          printf 'base_hash=%s\n' "$base_hash" >>"$GITHUB_OUTPUT"
+        env:
+          PR_NUMBER: ${{ needs.get-target.outputs.pr_number }}
+          GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
+
+      - name: Run benchmark
+        id: run-bench
+        run: |
+          uv venv
+          . .venv/bin/activate
+          uv pip install '.[mypyc]'
+          uv pip install -r build-requirements.txt
+          uv pip install -r test-requirements.txt
+
+          extra_args=()
+          if [[ "$CHECK" = "simple" ]]; then
+            extra_args+=( '-c' 'import typing' )
+          fi
+          python ./misc/perf_compare.py \
+            "$PR_BASE_HASH" "$PR_HEAD_HASH" \
+            --num-runs "$NUM_RUNS" \
+            "${extra_args[@]}" \
+            | tee results.txt
+          {
+              printf 'result_run_%s_%s<<EOF\n' "$CHECK" "$SEQUENCE_NO"
+              sed -ne '/===/,$ p' results.txt
+              echo EOF
+          } >>"$GITHUB_OUTPUT"
+        env:
+          PR_HEAD_HASH: ${{ steps.get-hash.outputs.head_hash }}
+          PR_BASE_HASH: ${{ steps.get-hash.outputs.base_hash }}
+          NUM_RUNS: ${{ matrix.sample == 'simple' && env.BENCH_RUNS_SIMPLE || env.BENCH_RUNS_SELFCHECK }}
+          CHECK: ${{ matrix.sample }}
+          SEQUENCE_NO: ${{ matrix.iter }}
+
+      - name: Report failure
+        if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: create-comment
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Sorry, something went wrong during benchmark execution.
+
+  bench-report:
+    runs-on: ubuntu-latest
+    if: |
+      !github.event.issue.pull_request
+      && needs.get-target.outputs.action == 'bench'
+      && (github.event_name == 'issues' || github.event_name == 'issue_comment')
+    needs: [get-target, bench]
+    permissions:
+      issues: write
+
+    steps:
+      - name: Post results
+        uses: actions-cool/issues-helper@v3
+        with:
+          actions: create-comment
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            Benchmark results are ready!
+
+            PR link: https://github.com/python/mypy/pull/${{ needs.get-target.outputs.pr_number }}
+
+            Results over three rounds for selfcheck (N=${{ env.BENCH_RUNS_SELFCHECK }}):
+
+            ```
+            ${{ needs.bench.outputs.result_run_selfcheck_1 }}
+            ```
+
+            ```
+            ${{ needs.bench.outputs.result_run_selfcheck_2 }}
+            ```
+
+            ```
+            ${{ needs.bench.outputs.result_run_selfcheck_3 }}
+            ```
+
+            Results over three rounds for `import typing` (N=${{ env.BENCH_RUNS_SIMPLE }}):
+
+            ```
+            ${{ needs.bench.outputs.result_run_simple_1 }}
+            ```
+
+            ```
+            ${{ needs.bench.outputs.result_run_simple_2 }}
+            ```
+
+            ```
+            ${{ needs.bench.outputs.result_run_simple_3 }}
+            ```
