@@ -279,13 +279,6 @@ jobs:
         env:
           GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
 
-      - name: Hide previous comments
-        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
-        uses: int128/hide-comment-action@v1
-        with:
-          issue-number: ${{ github.event.issue.number }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Post results
         if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
         uses: actions-cool/issues-helper@v3
@@ -402,12 +395,6 @@ jobs:
       issues: write
 
     steps:
-      - name: Hide previous comments
-        uses: int128/hide-comment-action@v1
-        with:
-          issue-number: ${{ github.event.issue.number }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Post results
         uses: actions-cool/issues-helper@v3
         with:
