@@ -343,7 +343,7 @@ jobs:
             | tee results.txt
           {
               printf 'result_run_%s_%s<<EOF\n' "$CHECK" "$SEQUENCE_NO"
-              sed -ne '/===/,$ p' results.txt
+              sed -ne '/=== Results/,$ p' results.txt
               echo EOF
           } >>"$GITHUB_OUTPUT"
         env:
