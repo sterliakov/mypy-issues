@@ -327,6 +327,7 @@ jobs:
         with:
           persist-credentials: false
           repository: python/mypy
+          fetch-depth: 0  # We need to have history access for merging
           token: ${{ secrets.CUSTOM_GITHUB_PAT }}
       - uses: astral-sh/setup-uv@v6
         with:
@@ -336,11 +337,15 @@ jobs:
         id: get-hash
         run: |
           git config --global advice.detachedHead false
+          git config user.name "Never pushes"
+          git config user.email "does@not.exist"
           gh pr checkout "$PR_NUMBER"
+          info=$(gh --repo python/mypy pr view 19623 --json baseRefName,baseRefOid)
+          base_branch=$(jq -r '.baseRefName' <<<"$info")
+          git merge "origin/$base_branch" --no-edit
           hash=$(git rev-parse HEAD)
           printf 'head_hash=%s\n' "$hash" >>"$GITHUB_OUTPUT"
-          base_hash=$(gh pr view "$PR_NUMBER" --json baseRefOid | jq -r '.baseRefOid')
-          printf 'base_hash=%s\n' "$base_hash" >>"$GITHUB_OUTPUT"
+          printf 'base_branch=%s\n' "$base_branch" >>"$GITHUB_OUTPUT"
         env:
           PR_NUMBER: ${{ needs.get-target.outputs.pr_number }}
           GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
@@ -348,6 +353,8 @@ jobs:
       - name: Run benchmark
         id: run-bench
         run: |
+          set -o pipefail
+
           uv venv
           . .venv/bin/activate
           uv pip install '.[mypyc]'
@@ -359,7 +366,7 @@ jobs:
             extra_args+=( '-c' 'import typing' )
           fi
           python ./misc/perf_compare.py \
-            "$PR_BASE_HASH" "$PR_HEAD_HASH" \
+            "$PR_BASE_BRANCH" "$PR_HEAD_HASH" \
             --num-runs "$NUM_RUNS" \
             "${extra_args[@]}" \
             | tee results.txt
@@ -370,7 +377,7 @@ jobs:
           } >>"$GITHUB_OUTPUT"
         env:
           PR_HEAD_HASH: ${{ steps.get-hash.outputs.head_hash }}
-          PR_BASE_HASH: ${{ steps.get-hash.outputs.base_hash }}
+          PR_BASE_BRANCH: ${{ steps.get-hash.outputs.base_branch }}
           NUM_RUNS: ${{ matrix.sample == 'simple' && env.BENCH_RUNS_SIMPLE || env.BENCH_RUNS_SELFCHECK }}
           CHECK: ${{ matrix.sample }}
           SEQUENCE_NO: ${{ matrix.iter }}
