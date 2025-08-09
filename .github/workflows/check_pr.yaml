@@ -337,6 +337,8 @@ jobs:
         id: get-hash
         run: |
           git config --global advice.detachedHead false
+          git config user.name "Never pushes"
+          git config user.email "does@not.exist"
           gh pr checkout "$PR_NUMBER"
           info=$(gh --repo python/mypy pr view 19623 --json baseRefName,baseRefOid)
           base_branch=$(jq -r '.baseRefName' <<<"$info")
