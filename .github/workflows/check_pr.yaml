@@ -153,7 +153,7 @@ jobs:
         if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
         with:
           python-version: '3.13'
@@ -187,7 +187,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
 
@@ -253,7 +253,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.13'
 
@@ -329,7 +329,7 @@ jobs:
           repository: python/mypy
           fetch-depth: 0  # We need to have history access for merging
           token: ${{ secrets.CUSTOM_GITHUB_PAT }}
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.12'
 
