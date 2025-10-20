@@ -6,7 +6,6 @@ on:
       pr:
         type: number
         description: PR to check
-        required: true
       action:
         type: choice
         description: Action to perform
