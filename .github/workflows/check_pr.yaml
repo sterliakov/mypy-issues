@@ -47,7 +47,7 @@ jobs:
       issues: write
     outputs:
       pr_number: ${{ steps.pr-number.outputs.pr }}
-      action: ${{ steps.pr-number.outputs.action }}
+      action: ${{ (github.event_name == 'issues' || github.event_name == 'issue_comment') && steps.pr-number.outputs.action || inputs.action }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -63,6 +63,7 @@ jobs:
 
       - name: Get PR number to check
         id: pr-number
+        if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
         run: |
           if [ -z "${INPUT_PR}" ] || [ -z "$ACTION" ]; then
               case "${ISSUE_TITLE,,}" in
