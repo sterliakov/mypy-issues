@@ -49,7 +49,7 @@ jobs:
       pr_number: ${{ steps.pr-number.outputs.pr }}
       action: ${{ (github.event_name == 'issues' || github.event_name == 'issue_comment') && steps.pr-number.outputs.action || inputs.action }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -149,7 +149,7 @@ jobs:
           key: issues-dump-v2-${{ github.run_id }}
           restore-keys: issues-dump-v2-
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         if: ${{ steps.restore-issues.outputs.cache-matched-key == '' }}
         with:
           persist-credentials: false
@@ -184,7 +184,7 @@ jobs:
         shard: [0, 1]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v7
@@ -250,7 +250,7 @@ jobs:
       issues: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v7
@@ -323,7 +323,7 @@ jobs:
       result_run_simple_3: ${{ steps.run-bench.outputs.result_run_simple_3 }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
           repository: python/mypy
@@ -451,7 +451,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - name: Clear body
