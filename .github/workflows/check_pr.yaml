@@ -166,7 +166,7 @@ jobs:
         env:
           GH_ACCESS_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: issues-dump
           path: downloaded/
@@ -191,7 +191,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: issues-dump
           path: downloaded/
@@ -228,7 +228,7 @@ jobs:
           RIGHT_ORIGIN: ${{ inputs.right_origin }}
           TQDM_MININTERVAL: '5'
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: results-${{ matrix.shard }}-${{ matrix.side }}
           path: outputs/
@@ -257,11 +257,11 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           name: issues-dump
           path: downloaded/
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           pattern: results-*
           path: outputs/
