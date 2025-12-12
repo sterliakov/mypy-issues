@@ -141,7 +141,7 @@ jobs:
     needs: [get-target]
     if: ${{ !github.event.issue.pull_request && needs.get-target.outputs.action == 'check' }}
     steps:
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         id: restore-issues
         name: Restore cache
         with:
