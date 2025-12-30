@@ -279,7 +279,8 @@ def diff_one(
 
 def _normalize(text: str, *, ignore_notes: bool) -> list[str]:
     text = (
-        text.replace("'", '"')
+        text
+        .replace("'", '"')
         .replace("<nothing>", "Never")
         .replace("<typing special form>", "typing._SpecialForm")
         .replace("NoReturn", "Never")
