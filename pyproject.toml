@@ -87,6 +87,7 @@ extend-ignore = [
     # custom
     "S404",  # `subprocess` module is possibly insecure
     "S603",  # `subprocess` call: check for execution of untrusted input
+    "RUF067",  # `__init__` module should only contain docstrings and re-exports
 ]
 extend-safe-fixes = ["F401"]
 select = ['ALL']
