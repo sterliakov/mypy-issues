@@ -85,6 +85,7 @@ class NonInteractivePrinter(Printer):
             for lb in self.issues[issue_number].issue.labels
         )
         print(f"Labels: {labels}")
+        print(f"Link: https://github.com/python/mypy/{issue_number}")
         for d, snip in diffs:
             if self.print_snippets:
                 print(
