@@ -43,6 +43,7 @@ repos:
         args: [--autofix, --indent, '2', --offset, '2']
       - id: pretty-format-toml
         args: [--autofix, --indent, '4', --trailing-comma]
+        exclude: uv.lock
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.36.1
