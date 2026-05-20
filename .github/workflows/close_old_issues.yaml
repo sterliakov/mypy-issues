@@ -17,14 +17,15 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
       - name: List open issues
-        id: list-issues
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: find-issues
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-state: open
-          exclude-labels: immortal
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue list --state open --search '-label:immortal' --json number,title | jq -c '.[]' >issues.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Close issues with merged PRs
         run: |
           set -euo pipefail
@@ -45,8 +46,7 @@ jobs:
             elif [[ $status = "unknown" ]]; then
               gh issue close "$issue" --reason "not planned"
             fi
-          done < <(jq -c '.[]' <<<"$ISSUES")
+          done <issues.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN_PUBLIC: ${{ secrets.CUSTOM_GITHUB_PAT }}
-          ISSUES: ${{ steps.list-issues.outputs.issues }}

@@ -56,10 +56,13 @@ jobs:
       - name: Get issue
         id: get-issue
         if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: get-issue
-          token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          title=$(gh issue view "$ISSUE" --json title | jq -r '.title')
+          printf 'issue_title=%s\n' "$title" >>"$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
 
       - name: Get PR number to check
         id: pr-number
@@ -101,7 +104,7 @@ jobs:
           GH_TOKEN: ${{ secrets.CUSTOM_GITHUB_PAT }}
           INPUT_PR: ${{ inputs.pr }}
           ACTION: ${{ inputs.action }}
-          ISSUE_TITLE: ${{ steps.get-issue.outputs.issue-title }}
+          ISSUE_TITLE: ${{ steps.get-issue.outputs.issue_title }}
 
       - name: Report progress
         if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
@@ -122,19 +125,26 @@ jobs:
 
       - name: Report failure
         if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: create-comment
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
-            ${{ steps.pr-number.outputs.msg }}
+        shell: bash
+        run: |
+          >comment.txt cat <<-EOF
+            $MESSAGE
 
             Comment with any text to retry (feel free to edit the title beforehand).
 
             Depending on the desider action, use the following issue titles:
 
-            * Check a PR against all open tickets: `Check #xxxxx`
-            * Run a few benchmarks for a PR: `Bench #xxxxx`
+            * Check a PR against all open tickets: \`Check #xxxxx\`
+            * Run a few benchmarks for a PR: \`Bench #xxxxx\`
+          EOF
+          cat comment.txt
+
+          gh issue comment "$ISSUE" -F comment.txt
+          rm comment.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MESSAGE: ${{ steps.pr-number.outputs.msg }}
+          ISSUE: ${{ github.event.issue.number }}
 
   fetch:
     runs-on: ubuntu-latest
@@ -235,12 +245,12 @@ jobs:
 
       - name: Report failure
         if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: create-comment
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
-            Sorry, something went wrong when running mypy.
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE" -b "Sorry, something went wrong when running mypy."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
 
   diff:
     runs-on: ubuntu-latest
@@ -281,27 +291,33 @@ jobs:
 
       - name: Post results
         if: ${{ github.event_name == 'issues' || github.event_name == 'issue_comment' }}
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: create-comment
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
+        shell: bash
+        run: |
+          >comment.txt cat <<-EOF
             Check results are ready!
 
-            PR link: https://github.com/python/mypy/pull/${{ needs.get-target.outputs.pr_number }}
+            PR link: https://github.com/python/mypy/pull/$PR_NUMBER
 
-            ```diff
-            ${{ steps.compare.outputs.diff_text }}
-            ```
+            \`\`\`diff
+            $DIFF_TEXT
+            \`\`\`
+          EOF
+          gh issue comment "$ISSUE" -F comment.txt
+          rm comment.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ needs.get-target.outputs.pr_number }}
+          DIFF_TEXT: ${{ steps.compare.outputs.diff_text }}
 
       - name: Report failure
         if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: create-comment
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
-            Sorry, something went wrong during diff generation.
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE" -b "Sorry, something went wrong during diff generation."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
 
   bench:
     runs-on: ubuntu-latest
@@ -384,12 +400,12 @@ jobs:
 
       - name: Report failure
         if: ${{ failure() && (github.event_name == 'issues' || github.event_name == 'issue_comment') }}
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: create-comment
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
-            Sorry, something went wrong during benchmark execution.
+        shell: bash
+        run: |
+          gh issue comment "$ISSUE" -b "Sorry, something went wrong during benchmark execution."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
 
   bench-report:
     runs-on: ubuntu-latest
@@ -403,42 +419,58 @@ jobs:
 
     steps:
       - name: Post results
-        uses: actions-cool/issues-helper@v3
-        with:
-          actions: create-comment
-          token: ${{ secrets.GITHUB_TOKEN }}
-          body: |
+        shell: bash
+        run: |
+          >comment.txt cat <<-EOF
             Benchmark results are ready!
 
-            PR link: https://github.com/python/mypy/pull/${{ needs.get-target.outputs.pr_number }}
+            PR link: https://github.com/python/mypy/pull/$PR_NUMBER
 
-            Results over three rounds for selfcheck (N=${{ env.BENCH_RUNS_SELFCHECK }}):
+            Results over three rounds for selfcheck (N=$NUM_RUNS_SELF):
 
-            ```
-            ${{ needs.bench.outputs.result_run_selfcheck_1 }}
-            ```
+            \`\`\`
+            $RESULT_SELF_1
+            \`\`\`
 
-            ```
-            ${{ needs.bench.outputs.result_run_selfcheck_2 }}
-            ```
+            \`\`\`
+            $RESULT_SELF_2
+            \`\`\`
 
-            ```
-            ${{ needs.bench.outputs.result_run_selfcheck_3 }}
-            ```
+            \`\`\`
+            $RESULT_SELF_3
+            \`\`\`
 
-            Results over three rounds for `import typing` (N=${{ env.BENCH_RUNS_SIMPLE }}):
+            Results over three rounds for \`import typing\` (N=$NUM_RUNS_SIMPLE):
 
-            ```
-            ${{ needs.bench.outputs.result_run_simple_1 }}
-            ```
+            \`\`\`
+            $RESULT_SIMPLE_1
+            \`\`\`
 
-            ```
-            ${{ needs.bench.outputs.result_run_simple_2 }}
-            ```
+            \`\`\`
+            $RESULT_SIMPLE_2
+            \`\`\`
 
-            ```
-            ${{ needs.bench.outputs.result_run_simple_3 }}
-            ```
+            \`\`\`
+            $RESULT_SIMPLE_3
+            \`\`\`
+          EOF
+          gh issue comment "$ISSUE" -F comment.txt
+          rm comment.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ needs.get-target.outputs.pr_number }}
+
+          NUM_RUNS_SELF: ${{ env.BENCH_RUNS_SELFCHECK }}
+          RESULT_SELF_1: ${{ needs.bench.outputs.result_run_selfcheck_1 }}
+          RESULT_SELF_2: ${{ needs.bench.outputs.result_run_selfcheck_2 }}
+          RESULT_SELF_3: ${{ needs.bench.outputs.result_run_selfcheck_3 }}
+
+          NUM_RUNS_SIMPLE: ${{ env.BENCH_RUNS_SIMPLE }}
+          RESULT_SIMPLE_1: ${{ needs.bench.outputs.result_run_simple_1 }}
+          RESULT_SIMPLE_2: ${{ needs.bench.outputs.result_run_simple_2 }}
+          RESULT_SIMPLE_3: ${{ needs.bench.outputs.result_run_simple_3 }}
+
 
   clear-body:
     runs-on: ubuntu-latest
