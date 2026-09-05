@@ -19,14 +19,14 @@ repos:
 
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.13
+    rev: v0.16.6
     hooks:
       - id: ruff-format
       - id: ruff-check
         args: [--fix]
 
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.11.15
+    rev: 0.12.10
     hooks:
       - id: uv-lock
 
@@ -46,7 +46,7 @@ repos:
         exclude: uv.lock
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.37.2
+    rev: 0.38.0
     hooks:
       - id: check-github-workflows
       - id: check-jsonschema
@@ -61,6 +61,6 @@ repos:
           - github.com/wasilibs/go-shellcheck/cmd/shellcheck@v0.11.1
 
   - repo: https://github.com/woodruffw/zizmor-pre-commit
-    rev: v1.25.2
+    rev: v1.30.0
     hooks:
       - id: zizmor
