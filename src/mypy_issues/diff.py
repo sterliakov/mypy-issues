@@ -8,7 +8,7 @@ import sys
 import termios
 import tty
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Generator
 from pathlib import Path
 from typing import ClassVar, Final, TextIO, cast
 
@@ -189,7 +189,7 @@ class InteractivePrinter(NonInteractivePrinter):
         print("~" * self.sep_width)
 
     @contextlib.contextmanager
-    def raw_terminal(self) -> Iterator[int]:
+    def raw_terminal(self) -> Generator[int]:
         """Switch to raw-mode terminal.
 
         Adapted from https://github.com/pallets/click/blob/main/src/click/_termui_impl.py
@@ -204,7 +204,7 @@ class InteractivePrinter(NonInteractivePrinter):
             fd = sys.stdin.fileno()
             f = None
 
-        try:
+        try:  # noqa: PLW0717
             old_settings = termios.tcgetattr(fd)
 
             try:
