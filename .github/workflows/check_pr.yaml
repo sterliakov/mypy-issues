@@ -28,7 +28,8 @@ on:
         default: pypi
   issues:
     types: [opened, reopened]
-  issue_comment:
+  issue_comment:  # zizmor: ignore[dangerous-triggers]
+    # Yes, this is insecure, but the workflow really is comment-driven
     types: [created]
 
 permissions:
